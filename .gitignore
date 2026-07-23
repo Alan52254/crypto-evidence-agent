@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# 工具快取
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 金鑰與本機設定 —— 絕不進版控
+.env
+.env.*
+!.env.example
+
+# Agent skill 包 —— 是個人的工作流程工具，不是本專案的一部分。
+# 夥伴不需要它們也能完整開發、測試、執行這個專案。
+.claude/
+
+# 作業系統
+.DS_Store

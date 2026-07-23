@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "hoyabit-evidence": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "hoyabit-mcp"],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}"
+      },
+      "disabled": false,
+      "autoApprove": ["binance_spot", "binance_derivatives", "crypto_news"]
+    }
+  }
+}

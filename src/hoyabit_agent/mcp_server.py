@@ -155,22 +155,34 @@ async def _serve_live() -> None:  # pragma: no cover - I/O 迴圈
     """以真實證據源啟動。與分析回合共用同一份實作，不會出現兩套邏輯。"""
     import httpx
 
+    from hoyabit_agent.ingest.cli import EMBEDDING_DIMENSIONS
+    from hoyabit_agent.ingest.embeddings import HashingEmbedder
+    from hoyabit_agent.ingest.historical import HistoricalEvidenceSource
+    from hoyabit_agent.ingest.postgres_store import PostgresVectorStore
     from hoyabit_agent.models.gemini import GeminiProvider
     from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
     from hoyabit_agent.sources.news import NewsRssSource
+    from hoyabit_agent.storage.postgres import reachable
 
     async with httpx.AsyncClient(
         timeout=30.0,
         headers={"user-agent": "hoyabit-agent/0.1 (mcp)"},
         follow_redirects=True,
     ) as client:
-        await serve(
-            [
-                BinanceSpotSource(client),
-                BinanceDerivativesSource(client),
-                NewsRssSource(client, labeller=GeminiProvider.from_environment(client)),
-            ]
-        )
+        sources: list[EvidenceSource] = [
+            BinanceSpotSource(client),
+            BinanceDerivativesSource(client),
+            NewsRssSource(client, labeller=GeminiProvider.from_environment(client)),
+        ]
+        # 向量庫在線才暴露歷史檢索工具 —— 否則 Kiro 會看到一個永遠回空的工具。
+        if await reachable():
+            sources.append(
+                HistoricalEvidenceSource(
+                    PostgresVectorStore(dimensions=EMBEDDING_DIMENSIONS),
+                    HashingEmbedder(dimensions=EMBEDDING_DIMENSIONS),
+                )
+            )
+        await serve(sources)
 
 
 def main() -> int:  # pragma: no cover - 進入點

@@ -26,6 +26,7 @@ dev = [
 hoyabit-mcp = "hoyabit_agent.mcp_server:main"
 hoyabit-eval = "hoyabit_agent.eval_cli:main"
 hoyabit-web = "hoyabit_agent.viz.server:main"
+hoyabit-ingest = "hoyabit_agent.ingest.cli:main"
 
 [build-system]
 requires = ["hatchling"]

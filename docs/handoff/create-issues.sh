@@ -16,7 +16,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 command -v gh >/dev/null || { echo "找不到 gh，先安裝：https://cli.github.com/"; exit 1; }
 
-echo "將在 $REPO 開 7 個 issue。"
+echo "將在 $REPO 開 4 個 issue。"
 read -rp "確定要繼續嗎？(y/N) " reply
 [[ "$reply" == "y" || "$reply" == "Y" ]] || { echo "已取消。"; exit 0; }
 
@@ -55,12 +55,9 @@ create() {
 完整驗收條件與交接說明見 \`docs/handoff/ISSUES.md\` 與 \`.scratch/analysis-agent/issues/\`。"
 }
 
-create 1 "軌跡視覺化前端（ticket 09）"              "priority:high,frontend"
-create 2 "背景 ingestion 與向量檢索（ticket 08）"    "priority:high,backend,time-sensitive"
-create 3 "評估基準與成績單（ticket 11）"             "priority:medium,quality"
-create 4 "報告缺少分析涵蓋的時間窗"                   "priority:medium,bug"
-create 5 "補上 CoinGecko 與自家聚合指標兩個證據源"    "priority:medium,backend"
-create 6 "補上 .kiro/specs/ 架構規格"                "priority:low,docs"
-create 7 "以 Kiro 載入 MCP server 並錄影"            "priority:low,demo"
+create 1 "報告缺少分析涵蓋的時間窗"                   "priority:medium,bug"
+create 2 "補上 CoinGecko 與自家聚合指標兩個證據源"    "priority:medium,backend"
+create 3 "補上 .kiro/specs/ 架構規格"                "priority:low,docs"
+create 4 "以 Kiro 載入 MCP server 並錄影"            "priority:low,demo"
 
 echo "完成。"

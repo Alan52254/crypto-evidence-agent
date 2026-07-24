@@ -16,7 +16,7 @@ uv sync --extra dev
 
 uv run python -m hoyabit_agent BTC          # 離線 demo：假資料源，秒回，看流程
 uv run python -m hoyabit_agent BTC --live   # 真實資料：Binance + 新聞 RSS，免金鑰
-uv run pytest                               # 344 項測試，不碰網路、不呼叫模型
+uv run pytest                               # 397 項測試，不碰網路、不呼叫模型
 ```
 
 **沒有任何 API 金鑰也完整可跑。** 資料層全部免金鑰；推理層沒設模型時會退回
@@ -71,6 +71,17 @@ uv run hoyabit-mcp        # stdio MCP server
 
 `.kiro/settings/mcp.json` 已就緒（Kiro）。Claude Desktop 或任何 MCP 客戶端也能掛，
 用自然語言直接查證「這個 RSI 是用哪段 K 線算的」。
+
+### 其他指令
+
+```bash
+hoyabit-eval                       # 評估成績單（離線）；--live 對五大幣種各跑一次
+hoyabit-web                        # 軌跡前端（讀 Postgres，輸入回合 ID 看推理過程）
+hoyabit-ingest --interval 300      # 背景 ingestion：每 5 分鐘把新聞收進向量庫
+```
+
+⚠️ `hoyabit-ingest` 要**賽前提前上線持續跑**，Demo 當天向量庫才不是空的。
+分析時 `--live` 會自動掛上歷史檢索（若向量庫在線）。
 
 ---
 
@@ -154,6 +165,9 @@ uv run hoyabit-mcp        # stdio MCP server
 | [`sources/`](src/hoyabit_agent/sources/) | 證據源適配器：Binance、新聞 RSS |
 | [`models/`](src/hoyabit_agent/models/) | 模型供應者：地端 OpenAI 相容、雲端 Gemini |
 | [`storage/`](src/hoyabit_agent/storage/) | 接縫 4：分析回合的持久化 |
+| [`ingest/`](src/hoyabit_agent/ingest/) | 背景 ingestion、向量庫、歷史檢索（ticket 08）|
+| [`evaluation.py`](src/hoyabit_agent/evaluation.py) | 評估基準與成績單（ticket 11）|
+| [`viz/`](src/hoyabit_agent/viz/) | 推論軌跡視覺化（ticket 09）|
 | [`mcp_server.py`](src/hoyabit_agent/mcp_server.py) | 證據源的 MCP 暴露 |
 | [`testing.py`](src/hoyabit_agent/testing.py) | 接縫 1 與 3 的假適配器 |
 
@@ -209,10 +223,10 @@ Python SDK v2 是為它重寫的。4 週內不得升 2.x。
 | 05 模型供應者 | ✅ | 地端 OpenAI 相容 + 雲端 Gemini，原生 tool calling |
 | 06 蒐集迴圈動態化 | ✅ | 缺口驅動、15 分鐘預算、永不逾時錯誤 |
 | 07 報告組裝 | ✅ | 引用檢核、跨面一致度信心度 |
-| 08 背景 ingestion | ⬜ | **未開始，時程敏感** —— 需提前上線累積資料 |
-| 09 軌跡視覺化前端 | ⬜ | **未開始，評分權重最高** |
+| 08 背景 ingestion | ✅ | 新聞收進 pgvector、向量檢索為 MCP 工具；**須賽前提前上線累積** |
+| 09 軌跡視覺化前端 | ✅ | 自包含 HTML + starlette server（即時串流進度尚未做）|
 | 10 MCP server | ✅ | 已以真實 client 走 stdio 驗證 |
-| 11 評估基準 | ⬜ | **未開始** —— 四項可量化門檻 |
+| 11 評估基準 | ✅ | 四項門檻成績單；忠實度/成本需外部 judge，否則誠實標「未量測」|
 
 票的完整驗收條件在 [`.scratch/analysis-agent/issues/`](.scratch/analysis-agent/issues/)。
 

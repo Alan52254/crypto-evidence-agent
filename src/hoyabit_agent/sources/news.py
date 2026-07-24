@@ -212,6 +212,16 @@ class NewsRssSource:
 
         return tuple(found)
 
+    async def articles(
+        self, asset: Asset, *, hours: int = 168, limit: int = 40
+    ) -> tuple[Article, ...]:
+        """取回近期相關文章的原始物件。
+
+        背景 ingestion 用它重用取數與過濾邏輯，而不必把整個證據源搬過去。
+        預設看一週、取多一些，因為 ingestion 是要累積庫存而非單次分析。
+        """
+        return await self._gather(asset, hours, limit)
+
     async def _gather(self, asset: Asset, hours: int, limit: int) -> tuple[Article, ...]:
         payloads = await asyncio.gather(
             *(self._read(url) for _, url in self._feeds), return_exceptions=True

@@ -25,7 +25,7 @@ from hoyabit_agent.domain import (
 from hoyabit_agent.models.gemini import API_KEY_ENV, GeminiProvider
 from hoyabit_agent.models.local import MODEL_ENV as LOCAL_MODEL_ENV
 from hoyabit_agent.models.local import LocalOpenAIProvider
-from hoyabit_agent.seams import ModelProvider, Sources
+from hoyabit_agent.seams import EvidenceSource, ModelProvider, Sources
 from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
 from hoyabit_agent.sources.news import NewsRssSource
 from hoyabit_agent.storage.postgres import (
@@ -126,12 +126,32 @@ async def _live_stack() -> AsyncIterator[tuple[Sources, ModelProvider, str]]:
         follow_redirects=True,
     ) as client:
         model, description = _pick_model(client)
-        sources: Sources = [
+        sources: list[EvidenceSource] = [
             BinanceSpotSource(client),
             BinanceDerivativesSource(client),
             NewsRssSource(client, labeller=model),
         ]
+        # 向量庫上線了才掛歷史檢索 —— 沒有它，這個工具只會回空集合、白佔一格。
+        historical = await _historical_source()
+        if historical is not None:
+            sources.append(historical)
         yield sources, model or _fallback_model(), description
+
+
+async def _historical_source() -> EvidenceSource | None:
+    """若向量庫連得上，回傳歷史檢索證據源；否則 None。"""
+    from hoyabit_agent.ingest.cli import EMBEDDING_DIMENSIONS
+    from hoyabit_agent.ingest.embeddings import HashingEmbedder
+    from hoyabit_agent.ingest.historical import HistoricalEvidenceSource
+    from hoyabit_agent.ingest.postgres_store import PostgresVectorStore
+    from hoyabit_agent.storage.postgres import reachable
+
+    if not await reachable():
+        return None
+    return HistoricalEvidenceSource(
+        PostgresVectorStore(dimensions=EMBEDDING_DIMENSIONS),
+        HashingEmbedder(dimensions=EMBEDDING_DIMENSIONS),
+    )
 
 
 def _fallback_model() -> ModelProvider:

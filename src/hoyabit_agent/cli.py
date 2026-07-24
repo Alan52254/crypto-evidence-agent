@@ -178,6 +178,16 @@ def _render_evidence(outcome: AnalysisOutcome) -> str:
     return "\n".join(lines)
 
 
+def _write_html(outcome: AnalysisOutcome, path: str) -> None:
+    """把這次回合渲染成自包含 HTML 存檔 —— 可直接用瀏覽器打開，不需要 server。"""
+    from pathlib import Path
+
+    from hoyabit_agent.viz.trace_html import render_outcome
+
+    Path(path).write_text(render_outcome(outcome), encoding="utf-8")
+    print(f"（已輸出軌跡 HTML：{path}）")
+
+
 async def _persist(outcome: AnalysisOutcome) -> None:
     """把回合寫進資料庫。
 
@@ -190,7 +200,7 @@ async def _persist(outcome: AnalysisOutcome) -> None:
     print(f"（已存檔：run_id={outcome.run_id}）")
 
 
-async def _run(asset: str, *, live: bool, save: bool) -> int:
+async def _run(asset: str, *, live: bool, save: bool, html_path: str | None) -> int:
     request = AnalysisRequest(asset=asset)
     if live:
         async with _live_stack() as (sources, model, description):
@@ -211,6 +221,8 @@ async def _run(asset: str, *, live: bool, save: bool) -> int:
         print(_render_trace(outcome.trace))
         if save:
             await _persist(outcome)
+        if html_path:
+            _write_html(outcome, html_path)
         return 1
 
     assert outcome.report is not None
@@ -231,6 +243,8 @@ async def _run(asset: str, *, live: bool, save: bool) -> int:
     if save:
         print()
         await _persist(outcome)
+    if html_path:
+        _write_html(outcome, html_path)
     return 0
 
 
@@ -247,8 +261,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="把這次回合存進 Postgres（連不到就略過，不會讓分析失敗）",
     )
+    parser.add_argument(
+        "--html",
+        metavar="PATH",
+        help="把推論軌跡輸出成自包含 HTML 檔（可直接用瀏覽器開）",
+    )
     args = parser.parse_args(argv)
-    return asyncio.run(_run(args.asset, live=args.live, save=args.save))
+    return asyncio.run(_run(args.asset, live=args.live, save=args.save, html_path=args.html))
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -232,4 +232,3 @@ Python SDK v2 是為它重寫的。4 週內不得升 2.x。
 
 **排除清單在 [`PROPOSAL.md`](PROPOSAL.md) 第十一節** —— 那些是刻意的取捨，不是遺漏。
 提新功能前請先確認它不在那份清單上。
-# crypto-evidence-agent

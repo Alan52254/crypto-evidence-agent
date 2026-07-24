@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 
 from hoyabit_agent.domain import (
+    AnalysisOutcome,
     Asset,
     DraftClaim,
     Evidence,
@@ -195,4 +196,33 @@ class ScriptedModel:
         return tuple(0.0 for _ in texts)
 
 
-__all__ = ["HangingSource", "ManualClock", "ScriptedModel", "StaticSource", "evidence"]
+class InMemoryAnalysisStore:
+    """滿足 `AnalysisStore` 的記憶體實作。
+
+    讓依賴 store 的東西（軌跡前端）可以在**不起 Postgres** 的情況下測試。
+    保留插入順序，好讓 `recent` 的「新的在前」可斷言。
+    """
+
+    def __init__(self) -> None:
+        self._runs: dict[str, AnalysisOutcome] = {}
+
+    async def save(self, outcome: AnalysisOutcome) -> None:
+        # 冪等：同一個識別碼覆蓋，且移到最新
+        self._runs.pop(outcome.run_id, None)
+        self._runs[outcome.run_id] = outcome
+
+    async def load(self, run_id: str) -> AnalysisOutcome | None:
+        return self._runs.get(run_id)
+
+    async def recent(self, limit: int = 20) -> tuple[str, ...]:
+        return tuple(reversed(list(self._runs)))[:limit]
+
+
+__all__ = [
+    "HangingSource",
+    "InMemoryAnalysisStore",
+    "ManualClock",
+    "ScriptedModel",
+    "StaticSource",
+    "evidence",
+]

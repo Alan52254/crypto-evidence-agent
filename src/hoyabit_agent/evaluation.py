@@ -229,8 +229,11 @@ def _has_repeated_call(outcome: AnalysisOutcome) -> bool:
     for node in outcome.trace.nodes:
         if node.kind is not TraceNodeKind.PLAN:
             continue
-        for tool, args in node.detail.items():
-            key = (tool, _canonical(args))
+        for execution in node.executions:
+            key = (
+                execution.tool,
+                json.dumps(dict(execution.arguments), sort_keys=True, ensure_ascii=False),
+            )
             if key in seen:
                 return True
             seen.add(key)

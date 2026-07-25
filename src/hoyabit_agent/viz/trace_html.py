@@ -7,10 +7,13 @@
 用 email 寄、或塞進 iframe，不依賴任何伺服器。
 """
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import html
 import json
+from collections import Counter
 
 from hoyabit_agent.domain import (
     AnalysisOutcome,
@@ -19,6 +22,7 @@ from hoyabit_agent.domain import (
     SourceExcerpt,
     TraceNodeKind,
 )
+from hoyabit_agent.trace_contract import trace_node_record
 
 # 每種節點一個顏色，讓時間軸一眼看出「規劃 vs 蒐集 vs 組裝」的節奏。
 _KIND_COLOUR = {
@@ -43,8 +47,13 @@ def render_outcome(outcome: AnalysisOutcome) -> str:
     if outcome.rejection is not None:
         body = _rejection(outcome)
     else:
-        body = "\n".join(
-            [_header(outcome), _timeline(outcome), _evidence(outcome), _claims(outcome)]
+        body = (
+            '<div class="terminal-shell">'
+            f'<aside class="sources-pane">{_source_rail(outcome)}</aside>'
+            f'<main class="report-pane">{_header(outcome)}{_claims(outcome)}'
+            f'{_evidence(outcome)}</main>'
+            f'<aside class="trace-pane">{_timeline(outcome)}</aside>'
+            "</div>"
         )
     return _PAGE.format(title=_e(outcome.run_id), body=body)
 
@@ -58,6 +67,29 @@ def _rejection(outcome: AnalysisOutcome) -> str:
         + _timeline(outcome)
     )
 
+
+def _source_rail(outcome: AnalysisOutcome) -> str:
+    report = outcome.report
+    assert report is not None
+    counts = Counter(item.facet for item in report.evidence)
+    facets = "".join(
+        f'<li><span class="status {"on" if counts[facet] else "off"}"></span>'
+        f'<span>{_e(facet.value)}</span><b>{counts[facet]}</b></li>'
+        for facet in report.confidence.facet_stances
+    )
+    source_ids = sorted(
+        {excerpt.source_id for item in report.evidence for excerpt in item.excerpts}
+    )
+    sources = "".join(f"<li><code>{_e(source)}</code></li>" for source in source_ids)
+    return (
+        '<a class=brand href="/">HOYA BIT <span>INTELLIGENCE</span></a>'
+        '<p class=kicker>Evidence workspace</p>'
+        '<nav aria-label="本回合資料覆蓋"><h2>市場因子覆蓋</h2>'
+        f'<ul class=coverage>{facets}</ul></nav>'
+        '<section><h2>本回合資料源</h2>'
+        f'<ul class=source-list>{sources}</ul></section>'
+        '<p class=rail-note>燈號表示本回合是否取得證據，不代表外部服務永久在線。</p>'
+    )
 
 def _header(outcome: AnalysisOutcome) -> str:
     report = outcome.report
@@ -77,12 +109,30 @@ def _header(outcome: AnalysisOutcome) -> str:
         )
     )
     return (
-        f'<section class="card"><h1>{_e(report.asset.value)} 分析報告</h1>'
-        f"<p><b>方向</b>：{_e(report.stance.value)}　<b>信心度</b>：{conf}</p>"
-        f"<table class=facets><tr><th>證據面</th><th>傾向</th></tr>{rows}</table>"
-        f"<p class=meta>回合 {_e(outcome.run_id)}</p></section>"
+        '<section class="card market-summary"><p class=eyebrow>MARKET INTELLIGENCE</p>'
+        f'<h1>{_e(report.asset.value)} 分析報告 · {_e(report.question)}</h1>'
+        f'<p class=decision><b>市場方向</b> <span class="stance {_e(report.stance.value)}">'
+        f'{_e(report.stance.value)}</span> <b>跨因子一致度</b> {conf}</p>'
+        '<p class=cutoff>歷史資料截止於 2026-05-31 UTC；外部證據依 fetched_at 為準。</p>'
+        f"<table class=facets><tr><th>金融因子</th><th>訊號方向</th></tr>{rows}</table>"
+        f"<p class=meta>RUN {_e(outcome.run_id)}</p></section>"
     )
 
+
+def _trace_label(kind: TraceNodeKind) -> str:
+    if kind is TraceNodeKind.PLAN or kind is TraceNodeKind.SYNTHESISE:
+        return "THOUGHT"
+    if kind is TraceNodeKind.GATHER or kind is TraceNodeKind.REPORT:
+        return "OBSERVATION"
+    if kind in {
+        TraceNodeKind.SOURCE_UNAVAILABLE,
+        TraceNodeKind.BUDGET_EXHAUSTED,
+        TraceNodeKind.CLAIM_DROPPED,
+    }:
+        return "WARNING"
+    if kind is TraceNodeKind.GAP_CHECK:
+        return "THOUGHT · GAP CHECK"
+    return str(kind.value).upper()
 
 def _timeline(outcome: AnalysisOutcome) -> str:
     budget = max((node.elapsed_seconds for node in outcome.trace.nodes), default=0.0) or 1.0
@@ -91,9 +141,11 @@ def _timeline(outcome: AnalysisOutcome) -> str:
         colour = _KIND_COLOUR.get(node.kind, "#6b7280")
         width = min(100.0, node.elapsed_seconds / budget * 100.0)
         detail = "".join(
-            f'<div class=arg><span class=tool>{_e(tool)}</span>'
-            f"<code>{_e(args)}</code></div>"
-            for tool, args in sorted(node.detail.items())
+            f'<div class=arg><span class=tool>ACTION · {_e(item.tool)} [{_e(item.asset.value)}]</span>'
+            f'<code>{_e(json.dumps(dict(item.arguments), ensure_ascii=False, sort_keys=True))}</code>'
+            f'<div class=produced>OBSERVATION · {_e(item.status.value)} · '
+            f'{_e(item.observation)}</div></div>'
+            for item in node.executions
         )
         produced = (
             f'<div class=produced>產出證據：{_e("、".join(node.evidence_ids))}</div>'
@@ -109,7 +161,7 @@ def _timeline(outcome: AnalysisOutcome) -> str:
             f'<li class=node style="--c:{colour}">'
             f"<div class=seq>{node.seq:02d}</div>"
             f"<div class=body>"
-            f'<div class=kind style="color:{colour}">{_e(node.kind.value)}'
+            f'<div class=kind style="color:{colour}">{_e(_trace_label(node.kind))}'
             f'<span class=t>{node.elapsed_seconds:.2f}s</span></div>'
             f"<div class=reason>{_e(node.reason)}</div>"
             f"{detail}{produced}{gap}"
@@ -118,7 +170,15 @@ def _timeline(outcome: AnalysisOutcome) -> str:
             f"</div></li>"
         )
     nodes = "".join(items)
-    return f'<section class="card"><h2>推論軌跡</h2><ol class=timeline>{nodes}</ol></section>'
+    elapsed = max((node.elapsed_seconds for node in outcome.trace.nodes), default=0.0)
+    return (
+        '<section class="trace-card"><header><div><p class=eyebrow>AGENT RUNTIME</p>'
+        '<h2>決策軌跡</h2></div>'
+        f'<div class=timer>{elapsed:05.1f}s <span>/ 900s</span></div></header>'
+        '<div class=trace-legend><span>THOUGHT</span><span>ACTION</span>'
+        '<span>OBSERVATION</span><span>WARNING</span></div>'
+        f'<ol class=timeline>{nodes}</ol></section>'
+    )
 
 
 def _excerpt_html(ex: SourceExcerpt) -> str:
@@ -176,72 +236,101 @@ def _claims(outcome: AnalysisOutcome) -> str:
 
 
 def trace_json(outcome: AnalysisOutcome) -> str:
-    """把軌跡輸出成 JSON —— 軌跡檔本身是交付物，可供其他工具消費。"""
+    """Serialize the same lossless contract consumed by SSE and Next.js."""
     return json.dumps(
         {
             "run_id": outcome.run_id,
             "nodes": [
-                {
-                    "seq": node.seq,
-                    "kind": node.kind.value,
-                    "reason": node.reason,
-                    "evidence_ids": list(node.evidence_ids),
-                    "gap_before": sorted(f.value for f in node.gap_before),
-                    "gap_after": sorted(f.value for f in node.gap_after),
-                    "elapsed_seconds": node.elapsed_seconds,
-                    "detail": dict(node.detail),
-                }
-                for node in outcome.trace.nodes
+                trace_node_record(outcome.run_id, node) for node in outcome.trace.nodes
             ],
         },
         ensure_ascii=False,
         indent=2,
     )
 
-
 _PAGE = """<!doctype html>
 <html lang=zh-Hant><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>{title} · 推論軌跡</title>
+<title>{title} · HOYA BIT Intelligence</title>
 <style>
-:root{{color-scheme:light dark}}
-body{{font:15px/1.6 system-ui,"Noto Sans TC",sans-serif;margin:0;background:#f3f4f6;color:#111827}}
-main{{max-width:820px;margin:0 auto;padding:24px 16px}}
-.card{{background:#fff;border-radius:12px;padding:20px 24px;margin:0 0 20px;
-  box-shadow:0 1px 3px rgba(0,0,0,.08)}}
-.card.reject{{border-left:4px solid #dc2626}}
-h1{{font-size:22px;margin:0 0 8px}} h2{{font-size:17px;margin:0 0 12px}}
-h3{{font-size:15px;margin:16px 0 8px;color:#6b7280}}
-.meta{{color:#9ca3af;font-size:12px}}
-table.facets{{border-collapse:collapse;margin:8px 0}}
-table.facets td,table.facets th{{border:1px solid #e5e7eb;padding:4px 12px;text-align:left}}
-ol.timeline{{list-style:none;margin:0;padding:0}}
-.node{{display:flex;gap:12px;padding:10px 0;border-top:1px solid #f3f4f6}}
-.node .seq{{font:12px monospace;color:#9ca3af;min-width:24px}}
-.node .body{{flex:1}}
-.kind{{font-weight:600;font-size:13px}} .kind .t{{color:#9ca3af;font-weight:400;margin-left:8px}}
-.reason{{margin:2px 0}}
-.arg{{font-size:13px;margin:2px 0}} .arg .tool{{color:#2563eb;margin-right:6px}}
-.arg code,.produced,.gap{{font-size:12px;color:#6b7280}}
-.produced,.gap{{margin:2px 0}}
-.track{{height:4px;background:#f3f4f6;border-radius:2px;margin-top:6px;overflow:hidden}}
-.track .bar{{height:100%}}
-details.evi{{border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;margin:6px 0}}
-details.evi[open]{{background:#fafafa}}
-details.evi summary{{cursor:pointer}}
-.facet{{background:#eef2ff;color:#3730a3;border-radius:4px;padding:0 6px;font-size:12px}}
-.hint{{color:#6b7280;font-size:12px}}
-.excerpt{{margin:8px 0 0;padding-left:12px;border-left:2px solid #e5e7eb}}
-.excerpt a{{display:block;font-size:12px;color:#2563eb;word-break:break-all}}
-ul.claims{{margin:0;padding-left:18px}}
-.claim{{margin:6px 0}}
-a.cite{{display:inline-block;background:#111827;color:#fff;border-radius:4px;
-  padding:0 6px;margin-left:4px;font:12px monospace;text-decoration:none}}
-a.cite:hover{{background:#2563eb}}
-.dropped .why{{color:#dc2626;font-size:12px;margin-left:8px}}
-.note{{color:#9ca3af;font-size:12px;margin:0 0 8px}}
-:target{{outline:2px solid #2563eb;outline-offset:2px}}
-</style></head><body><main>{body}</main></body></html>"""
+:root{{color-scheme:dark;--bg:#070b12;--panel:#0c121d;--raised:#111a28;--line:#223047;
+--text:#e7edf6;--muted:#94a3b8;--gold:#f6b94a;--blue:#5aa7ff;--green:#48c78e;
+--purple:#aa8cff;--warning:#ff9f43;--danger:#ff667a}}
+*{{box-sizing:border-box}} html{{background:var(--bg)}}
+body{{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 Inter,ui-sans-serif,
+system-ui,"Noto Sans TC",sans-serif}} a{{color:inherit}} button,a,summary{{touch-action:manipulation}}
+#app{{min-height:100dvh}} .terminal-shell{{display:grid;grid-template-columns:minmax(210px,16vw)
+minmax(460px,1fr) minmax(340px,30vw);min-height:100dvh}}
+.sources-pane,.trace-pane{{background:var(--panel);position:sticky;top:0;height:100dvh;overflow:auto}}
+.sources-pane{{border-right:1px solid var(--line);padding:24px 16px}}
+.trace-pane{{border-left:1px solid var(--line);padding:20px}}
+.report-pane{{min-width:0;padding:28px clamp(20px,3vw,48px);overflow:auto}}
+.brand{{display:block;color:var(--gold);font:700 15px ui-monospace,monospace;letter-spacing:.12em;
+text-decoration:none;padding:8px 6px}} .brand span{{display:block;color:var(--muted);font-size:9px}}
+.kicker,.eyebrow{{color:var(--muted);font:600 10px ui-monospace,monospace;letter-spacing:.14em;
+text-transform:uppercase}} .sources-pane h2{{font-size:11px;color:var(--muted);margin:28px 6px 10px;
+text-transform:uppercase;letter-spacing:.08em}}
+ul.coverage,ul.source-list{{list-style:none;padding:0;margin:0}} .coverage li{{display:grid;
+grid-template-columns:10px 1fr auto;align-items:center;gap:9px;min-height:38px;padding:0 8px;
+border-bottom:1px solid rgba(148,163,184,.08);text-transform:capitalize}}
+.coverage b{{font:600 12px ui-monospace,monospace}} .status{{width:7px;height:7px;border-radius:50%;
+background:#465269}} .status.on{{background:var(--green);box-shadow:0 0 0 3px rgba(72,199,142,.1)}}
+.source-list li{{padding:7px 8px;color:#b8c4d6;overflow-wrap:anywhere}} .source-list code{{font-size:11px}}
+.rail-note{{margin:24px 6px;color:var(--muted);font-size:11px}}
+.report-head{{display:flex;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line);
+padding-bottom:22px}} h1{{font-size:clamp(21px,2.3vw,32px);line-height:1.25;margin:7px 0 9px;
+max-width:760px}} .verdict{{min-width:130px;text-align:right}} .verdict strong{{display:block;
+font:700 30px ui-monospace,monospace;margin-top:8px}} .verdict small,.cutoff{{color:var(--muted)}}
+.stance,.signal{{display:inline-flex;border:1px solid currentColor;border-radius:999px;padding:3px 9px;
+font:700 10px ui-monospace,monospace;text-transform:uppercase}}
+.bullish{{color:var(--green)}} .bearish{{color:var(--danger)}} .neutral{{color:var(--warning)}}
+.factor-grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:18px 0}}
+.factor{{background:var(--raised);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}}
+.factor>span{{display:block;color:var(--muted);font:600 10px ui-monospace,monospace;text-transform:uppercase}}
+.factor .signal{{margin:10px 0 6px}} .factor small{{display:block;color:var(--muted)}}
+.run-meta{{display:grid;grid-template-columns:1fr auto;gap:6px;color:var(--muted);
+font:10px ui-monospace,monospace}} progress{{grid-column:1/-1;width:100%;height:3px;accent-color:var(--gold)}}
+.market-summary{{border-bottom:1px solid var(--line);padding-bottom:20px}}
+.decision{{display:flex;align-items:center;gap:10px;flex-wrap:wrap}}
+table.facets{{width:100%;border-collapse:collapse;margin:16px 0}}
+table.facets th,table.facets td{{padding:9px;border-bottom:1px solid var(--line);text-align:left;text-transform:capitalize}}
+table.facets th{{color:var(--muted);font:600 10px ui-monospace,monospace;text-transform:uppercase}}
+.card{{margin:28px 0}} .card h2,.trace-card h2{{font-size:16px;margin:0}}
+ul.claims{{list-style:none;padding:0;margin:12px 0}} .claim{{background:var(--raised);border:1px solid var(--line);
+border-left:3px solid var(--gold);border-radius:7px;padding:14px 16px;margin:9px 0;line-height:1.7}}
+a.cite{{display:inline-flex;background:#17243a;color:#b8d9ff;border:1px solid #29466c;border-radius:4px;
+padding:1px 6px;margin:2px;font:10px ui-monospace,monospace;text-decoration:none}}
+a.cite:hover,a.cite:focus-visible{{background:#24466f;outline:2px solid var(--blue);outline-offset:2px}}
+.note,.meta{{color:var(--muted);font-size:11px}} .dropped{{color:var(--muted);padding:8px}}
+.dropped .why{{color:var(--danger);font-size:11px;margin-left:8px}}
+details.evi{{border:1px solid var(--line);border-radius:7px;margin:7px 0;background:var(--panel)}}
+details.evi summary{{cursor:pointer;padding:11px 13px;min-height:44px}} details.evi[open]{{border-color:#385172}}
+.facet{{color:var(--purple);font-size:10px;text-transform:uppercase;margin:0 5px}} .hint{{color:var(--muted)}}
+.excerpt{{padding:12px 14px;border-top:1px solid var(--line);color:#cbd5e1}} .excerpt a{{display:block;
+color:var(--blue);font-size:11px;overflow-wrap:anywhere;margin-top:7px}}
+.trace-card>header{{display:flex;justify-content:space-between;align-items:start;position:sticky;top:-20px;
+background:var(--panel);padding:20px 0 12px;z-index:2}} .timer{{font:700 15px ui-monospace,monospace;
+color:var(--gold);font-variant-numeric:tabular-nums}} .timer span{{color:var(--muted);font-size:10px}}
+.trace-legend{{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 16px}} .trace-legend span{{border:1px solid var(--line);
+border-radius:3px;padding:2px 5px;color:var(--muted);font:9px ui-monospace,monospace}}
+ol.timeline{{list-style:none;margin:0;padding:0}} .node{{display:flex;gap:10px;padding:12px 0;border-top:1px solid var(--line)}}
+.node .seq{{font:10px ui-monospace,monospace;color:var(--muted);min-width:22px}} .node .body{{min-width:0;flex:1}}
+.kind{{font:700 10px ui-monospace,monospace;letter-spacing:.08em}} .kind .t{{float:right;color:var(--muted);
+font-weight:400;font-variant-numeric:tabular-nums}} .reason{{font-size:12px;margin:5px 0;white-space:pre-wrap}}
+.arg{{border-left:2px solid var(--blue);padding:5px 8px;margin:5px 0;background:#0a1625}}
+.arg .tool{{display:block;color:var(--blue);font:600 11px ui-monospace,monospace}} .arg code,.produced,.gap{{font-size:10px;
+color:var(--muted);overflow-wrap:anywhere}} .produced{{border-left:2px solid var(--green);padding-left:8px}}
+.gap{{border-left:2px solid var(--purple);padding-left:8px;margin-top:5px}} .track{{height:2px;background:#1a2638;
+margin-top:8px;overflow:hidden}} .track .bar{{height:100%}} :target{{outline:2px solid var(--gold);outline-offset:3px}}
+.reject{{max-width:640px;margin:60px auto;padding:24px;border:1px solid var(--danger)}}
+@media(max-width:1100px){{.terminal-shell{{grid-template-columns:190px 1fr}}.trace-pane{{grid-column:1/-1;
+position:static;height:auto;border-left:0;border-top:1px solid var(--line)}}}}
+@media(max-width:720px){{.terminal-shell{{display:block}}.sources-pane{{position:static;height:auto;border-right:0;
+border-bottom:1px solid var(--line)}}.source-list{{display:none}}.sources-pane section h2{{display:none}}
+.report-pane{{padding:20px 14px}}.report-head{{display:block}}.verdict{{text-align:left;margin-top:14px}}
+.factor-grid{{grid-template-columns:repeat(2,1fr)}}.trace-pane{{padding:14px}}}}
+@media(prefers-reduced-motion:reduce){{*{{scroll-behavior:auto!important;transition:none!important}}}}
+</style></head><body><div id=app>{body}</div></body></html>"""
 
 
 __all__ = ["render_outcome", "trace_json"]

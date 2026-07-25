@@ -10,38 +10,32 @@ from hoyabit_agent.domain import Asset, Evidence, Facet, LabelAspect
 from hoyabit_agent.seams import GatherContext
 
 PLAN_SYSTEM = """\
-你是一位加密貨幣分析師，正在為某個幣種蒐集證據。
-
-證據分成四個面：
-- technical（技術面）：由價量時間序列算出的數值
-- positioning（籌碼面）：資金與持倉分布
-- fundamental（基本面）：該資產或其網路發生的事
-- sentiment（情緒面）：人類撰寫的文本所透露的傾向
-
-你的任務是**決定下一步呼叫哪些工具、帶什麼參數**，以填補目前的證據缺口。
+你是競賽級加密市場研究 Agent 的規劃層。你必須依題目與證據缺口動態選擇工具，
+整合彼此獨立的價格、衍生品、歷史 OHLCV、新聞／官方公告與社群文本。
 
 規則：
-1. 優先補「缺口」中列出的面。已經有足夠證據的面不必重複蒐集。
-2. 參數要依當下的分析目的選擇，不要每次都用預設值。
-   例如判斷長期趨勢用日線且取足夠根數，觀察短線波動用小時線。
-3. 可以一次呼叫多個工具，它們會並行執行。
-4. **先用一兩句話說明你為什麼這樣選**，再發出工具呼叫。
-   這段說明會直接呈現給讀者，請具體說出你想補哪一面、為什麼選這些參數。
-5. 若證據已經足夠回答問題，就不要再呼叫任何工具。
+1. 優先補目前缺少的 technical、positioning、fundamental、sentiment 證據面。
+2. 同一事件的媒體轉載不算獨立證據；需要時尋找不同類型來源交叉驗證。
+3. 參數必須對應題目時框；未指定時以近期市場狀況為主，但歷史 CSV 截止於 2026-05-31。
+4. 一次可並行呼叫多個互相獨立的工具，以壓縮在 15 分鐘內。
+5. 先說明要驗證的假設、缺口或反方觀點，再發出工具呼叫。
+6. 已回傳空結果的相同工具與參數不得重試。
+7. 當證據足以回答題目，或剩餘缺口沒有可用工具支持時停止並明確說明限制。
 """
-
 SYNTHESIS_SYSTEM = """\
-你是一位加密貨幣分析師，要根據**已蒐集到的證據**寫出分析判斷。
+你是競賽級加密市場研究 Agent 的綜合判斷層。請用繁體中文，以事實 → 推論 → 結論
+的層次回答題目，且只能使用提供的證據。
 
-鐵則（違反者會被系統丟棄）：
-1. **每一則判斷都必須掛載至少一個證據 ID**，且該 ID 必須真的出現在下方證據清單中。
-2. 不要寫沒有證據支撐的句子。寧可少寫，也不要編造。
-3. 不要複述證據的數字就當成判斷 —— 判斷要說出這個數字**意味著什麼**。
-4. 證據互相矛盾時，明白寫出矛盾，不要挑一邊講。
-5. 每則判斷標明它屬於哪一個證據面。
-6. 用繁體中文書寫，語氣中性客觀，避免「建議」「應該買」這類投資顧問用語。
+鐵則：
+1. 每則判斷至少掛載一個真實 evidence ID；無引用的判斷會被系統丟棄。
+2. 明確區分可觀察事實、從事實推導的推論與最終市場判斷。
+3. 至少呈現一項支持證據與一項反方／風險證據；若找不到，明確列為限制。
+4. 證據矛盾時說明採信哪一側，以及時效性、來源獨立性與直接性的理由。
+5. 不得把媒體或第三方分析師的結論直接當成系統結論。
+6. null 或缺失資料不得補值；來源截止日與即時資料必須分開表達。
+7. 每則判斷標示所屬證據面；可以跨面引用多個 evidence ID。
+8. 禁止保證式預測與買賣建議，並列出可能推翻結論的條件與後續觀察重點。
 """
-
 SENTIMENT_LABEL_SYSTEM = """\
 你要為加密貨幣相關文本評估**輿論傾向** —— 也就是這段文字的語氣與措辭
 透露出撰稿者／市場當下**怎麼看**這件事。
@@ -78,10 +72,18 @@ LABEL_SYSTEM = {
 
 def plan_prompt(context: GatherContext) -> str:
     """把當下的蒐集狀態寫成給模型的敘述。"""
-    lines = [f"分析標的：{context.asset.value}", ""]
+    lines = [f"分析標的：{context.asset.value}", f"分析題目：{context.question}", ""]
 
     gap = "、".join(sorted(facet.value for facet in context.gap)) or "無"
     lines.append(f"目前仍有缺口的證據面：{gap}")
+    if context.gap_state is not None:
+        state = context.gap_state
+        lines.append(f"正反方向皆有證據：{'是' if state.direction_balance else '否'}")
+        contradictions = "、".join(sorted(f.value for f in state.contradiction_facets)) or "無"
+        lines.append(f"存在矛盾訊號的面向：{contradictions}")
+        lines.append(f"獨立來源數：{state.independent_sources}（最低要求 2）")
+        lines.append(f"證據時效性合格：{'是' if state.fresh else '否'}")
+        lines.append(f"尚待處理的品質缺口：{', '.join(state.reasons) or '無'}")
 
     if context.evidence:
         lines.append("")
@@ -90,6 +92,11 @@ def plan_prompt(context: GatherContext) -> str:
             items = [item for item in context.evidence if item.facet is facet]
             if items:
                 lines.append(f"  - {facet.value}：{len(items)} 項")
+                for item in items[:5]:
+                    lines.append(
+                        f"      [{item.id}] direction={item.stance_hint:+.2f} "
+                        f"summary={item.summary}"
+                    )
     else:
         lines.append("")
         lines.append("目前尚未蒐集到任何證據。")
@@ -105,9 +112,11 @@ def plan_prompt(context: GatherContext) -> str:
     return "\n".join(lines)
 
 
-def synthesis_prompt(asset: Asset, evidence: tuple[Evidence, ...]) -> str:
+def synthesis_prompt(
+    asset: Asset, evidence: tuple[Evidence, ...], question: str = "請分析當前市場狀況"
+) -> str:
     """把證據清單寫成給模型的敘述，含每項證據的 ID 與原文。"""
-    lines = [f"分析標的：{asset.value}", "", "可用證據："]
+    lines = [f"分析標的：{asset.value}", f"分析題目：{question}", "", "可用證據："]
 
     for item in evidence:
         lines.append("")

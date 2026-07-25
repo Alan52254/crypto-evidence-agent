@@ -1,7 +1,7 @@
-"""接縫 4 的 Postgres 實作。
+"""?亦葦 4 ??Postgres 撖虫???
 
-`save` 在單一交易內完成 —— 半個分析回合比沒有更糟，
-因為判斷會指向不存在的證據，溯源就斷了。
+`save` ?典?銝?鈭斗??批??????????????????瘝???渡?嚗?
+????斗???????摮????????皞舀?撠望?鈭???
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from hoyabit_agent.domain import (
     AnalysisOutcome,
     Asset,
     Claim,
+    ClaimRole,
     Confidence,
     ConfidenceResult,
     DraftClaim,
@@ -29,25 +30,28 @@ from hoyabit_agent.domain import (
     Report,
     SourceExcerpt,
     Stance,
+    ToolExecutionRecord,
+    ToolExecutionStatus,
     Trace,
     TraceNode,
     TraceNodeKind,
 )
 from hoyabit_agent.tools import MINIMUM_FACETS_FOR_CONFIDENCE
+from hoyabit_agent.trace_contract import execution_record
 
-SCHEMA = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
+SCHEMA = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8-sig")
 
 DATABASE_URL_ENV = "HOYABIT_DATABASE_URL"
 DEFAULT_DATABASE_URL = "postgresql://postgres:hoyabit@localhost:5433/hoyabit"
 
 
 def database_url() -> str:
-    """資料庫連線字串。預設指向 README 裡那行 docker 指令起的實例。"""
+    """Return the configured PostgreSQL connection string."""
     return os.environ.get(DATABASE_URL_ENV, "").strip() or DEFAULT_DATABASE_URL
 
 
 async def reachable(url: str | None = None, timeout: float = 3.0) -> bool:
-    """資料庫是否連得上。連不上就是連不上，原因不重要。"""
+    """Return whether the configured PostgreSQL server is reachable."""
     try:
         async with await psycopg.AsyncConnection.connect(
             url or database_url(), connect_timeout=int(timeout)
@@ -58,10 +62,10 @@ async def reachable(url: str | None = None, timeout: float = 3.0) -> bool:
 
 
 class PostgresAnalysisStore:
-    """把分析回合存進 Postgres。
+    """???????????Postgres??
 
-    每次操作開一條連線而非持有連線池：這個 store 的呼叫頻率是「每次分析一次」，
-    連線池的複雜度換不到任何東西。真的變成瓶頸時再加，那時會有數字支撐。
+    瘥?活??????璇?????????????瘙??????store ????恍???????甈∪????甈～???
+    ???瘙??銴??摨行?銝??隞颱??梯正??????????豢????嚗????????摮??????
     """
 
     def __init__(self, url: str | None = None) -> None:
@@ -69,20 +73,20 @@ class PostgresAnalysisStore:
 
     @classmethod
     def from_environment(cls) -> PostgresAnalysisStore:
-        """依 `HOYABIT_DATABASE_URL` 建構。"""
+        """Build a store from the configured environment."""
         return cls(database_url())
 
     async def _connect(self) -> psycopg.AsyncConnection[Any]:
         return await psycopg.AsyncConnection.connect(self._url, row_factory=dict_row)
 
     async def migrate(self) -> None:
-        """建立 schema。可重複執行。"""
+        """Apply the idempotent database schema."""
         async with await self._connect() as connection:
             await connection.execute(SCHEMA)
             await connection.commit()
 
     async def reset(self) -> None:
-        """清空並重建 schema。**只給測試用。**"""
+        """Reset the schema for isolated test environments."""
         async with await self._connect() as connection:
             await connection.execute(
                 "DROP TABLE IF EXISTS trace_node, claim, source_excerpt, evidence,"
@@ -92,17 +96,17 @@ class PostgresAnalysisStore:
             await connection.commit()
 
     async def close(self) -> None:
-        """目前不持有資源；保留這個方法讓呼叫端不必知道這件事。"""
+        """Close resources owned by the store."""
         return None
 
-    # -- 寫入 -----------------------------------------------------------
+    # -- 撖怠? -----------------------------------------------------------
 
     async def save(self, outcome: AnalysisOutcome) -> None:
-        """在單一交易內寫入整個回合。同一個識別碼再存一次會覆蓋，不會重複。"""
+        """Persist one complete analysis run transactionally."""
         await self.migrate()
         async with await self._connect() as connection:
             async with connection.transaction():
-                # 冪等：先刪再寫。外鍵 ON DELETE CASCADE 會清掉所有從屬資料。
+                # ?芰?嚗???芸?撖怒?????ON DELETE CASCADE ?????????撅祈?????
                 await connection.execute(
                     "DELETE FROM analysis_run WHERE run_id = %s", (outcome.run_id,)
                 )
@@ -125,8 +129,7 @@ class PostgresAnalysisStore:
 
         if isinstance(confidence, Confidence | InsufficientEvidence):
             stances = {
-                facet.value: stance.value
-                for facet, stance in confidence.facet_stances.items()
+                facet.value: stance.value for facet, stance in confidence.facet_stances.items()
             }
         if isinstance(confidence, Confidence):
             value = confidence.value
@@ -135,12 +138,13 @@ class PostgresAnalysisStore:
             present = sorted(facet.value for facet in confidence.facets_present)
 
         await connection.execute(
-            "INSERT INTO analysis_run (run_id, asset, stance, rejection_reason,"
+            "INSERT INTO analysis_run (run_id, asset, question, stance, rejection_reason,"
             " confidence_value, confidence_cause, confidence_facet_stances, facets_present)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 outcome.run_id,
                 report.asset.value if report is not None else None,
+                report.question if report is not None else "",
                 report.stance.value if report is not None else None,
                 outcome.rejection.reason if outcome.rejection is not None else None,
                 value,
@@ -157,41 +161,57 @@ class PostgresAnalysisStore:
             await connection.execute(
                 "INSERT INTO evidence (run_id, evidence_id, facet, summary, stance_hint,"
                 " event_key, position) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (run_id, item.id, item.facet.value, item.summary, item.stance_hint,
-                 item.event_key, index),
+                (
+                    run_id,
+                    item.id,
+                    item.facet.value,
+                    item.summary,
+                    item.stance_hint,
+                    item.event_key,
+                    index,
+                ),
             )
             for offset, excerpt in enumerate(item.excerpts):
                 await connection.execute(
                     "INSERT INTO source_excerpt (run_id, evidence_id, source_id, url,"
                     " retrieved_at, locator, text, position)"
                     " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                    (run_id, item.id, excerpt.source_id, excerpt.url, excerpt.retrieved_at,
-                     excerpt.locator, excerpt.text, offset),
+                    (
+                        run_id,
+                        item.id,
+                        excerpt.source_id,
+                        excerpt.url,
+                        excerpt.retrieved_at,
+                        excerpt.locator,
+                        excerpt.text,
+                        offset,
+                    ),
                 )
 
     async def _insert_claims(
         self, connection: psycopg.AsyncConnection[Any], run_id: str, report: Report
     ) -> None:
-        rows = [(claim.text, claim.facet, claim.evidence_ids, True) for claim in report.claims]
+        rows = [
+            (claim.text, claim.facet, claim.role, claim.evidence_ids, True)
+            for claim in report.claims
+        ]
         rows += [
-            (draft.text, draft.facet, draft.evidence_ids, False)
+            (draft.text, draft.facet, draft.role, draft.evidence_ids, False)
             for draft in report.dropped_claims
         ]
-        for index, (text, facet, ids, kept) in enumerate(rows):
+        for index, (text, facet, role, ids, kept) in enumerate(rows):
             await connection.execute(
-                "INSERT INTO claim (run_id, text, facet, evidence_ids, kept, position)"
-                " VALUES (%s, %s, %s, %s, %s, %s)",
-                (run_id, text, facet.value, json.dumps(list(ids)), kept, index),
+                "INSERT INTO claim (run_id, text, facet, role, evidence_ids, kept, position)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (run_id, text, facet.value, role.value, json.dumps(list(ids)), kept, index),
             )
 
-    async def _insert_trace(
-        self, connection: psycopg.AsyncConnection[Any], trace: Trace
-    ) -> None:
+    async def _insert_trace(self, connection: psycopg.AsyncConnection[Any], trace: Trace) -> None:
         for node in trace.nodes:
             await connection.execute(
                 "INSERT INTO trace_node (run_id, seq, kind, reason, evidence_ids,"
-                " gap_before, gap_after, elapsed_seconds, detail)"
-                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                " gap_before, gap_after, elapsed_seconds, detail, executions, gap_state)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     trace.run_id,
                     node.seq,
@@ -201,11 +221,13 @@ class PostgresAnalysisStore:
                     json.dumps(sorted(facet.value for facet in node.gap_before)),
                     json.dumps(sorted(facet.value for facet in node.gap_after)),
                     node.elapsed_seconds,
-                    json.dumps(dict(node.detail)),
+                    json.dumps({}),
+                    json.dumps([execution_record(item) for item in node.executions]),
+                    json.dumps(dict(node.gap_state)),
                 ),
             )
 
-    # -- 讀取 -----------------------------------------------------------
+    # -- 霈???-----------------------------------------------------------
 
     async def load(self, run_id: str) -> AnalysisOutcome | None:
         await self.migrate()
@@ -232,9 +254,7 @@ class PostgresAnalysisStore:
                 Rejection(reason=run["rejection_reason"]) if run["rejection_reason"] else None
             )
             if run["asset"] is None:
-                return AnalysisOutcome(
-                    run_id=run_id, report=None, trace=trace, rejection=rejection
-                )
+                return AnalysisOutcome(run_id=run_id, report=None, trace=trace, rejection=rejection)
 
             evidence = await self._load_evidence(connection, run_id)
             kept, dropped = await self._load_claims(connection, run_id)
@@ -247,6 +267,7 @@ class PostgresAnalysisStore:
                     claims=kept,
                     dropped_claims=dropped,
                     evidence=evidence,
+                    question=str(run["question"]),
                 ),
                 trace=trace,
                 rejection=rejection,
@@ -303,12 +324,22 @@ class PostgresAnalysisStore:
             connection, "SELECT * FROM claim WHERE run_id = %s ORDER BY position", (run_id,)
         )
         kept = tuple(
-            Claim(row["text"], tuple(row["evidence_ids"]), Facet(row["facet"]))
+            Claim(
+                row["text"],
+                tuple(row["evidence_ids"]),
+                Facet(row["facet"]),
+                ClaimRole(row.get("role", "inference")),
+            )
             for row in rows
             if row["kept"]
         )
         dropped = tuple(
-            DraftClaim(row["text"], tuple(row["evidence_ids"]), Facet(row["facet"]))
+            DraftClaim(
+                row["text"],
+                tuple(row["evidence_ids"]),
+                Facet(row["facet"]),
+                ClaimRole(row.get("role", "inference")),
+            )
             for row in rows
             if not row["kept"]
         )
@@ -340,7 +371,19 @@ def _to_node(row: dict[str, Any]) -> TraceNode:
         gap_before=frozenset(Facet(value) for value in row["gap_before"]),
         gap_after=frozenset(Facet(value) for value in row["gap_after"]),
         elapsed_seconds=row["elapsed_seconds"],
-        detail=dict(row["detail"]),
+        executions=tuple(
+            ToolExecutionRecord(
+                tool=item["tool"],
+                asset=Asset(item["asset"]),
+                arguments=dict(item["arguments"]),
+                status=ToolExecutionStatus(item["status"]),
+                observation=item.get("observation", ""),
+                evidence_ids=tuple(item.get("evidence_ids", [])),
+                duration_seconds=float(item.get("duration_seconds", 0.0)),
+            )
+            for item in (row.get("executions") or [])
+        ),
+        gap_state=dict(row.get("gap_state") or {}),
     )
 
 
@@ -364,3 +407,4 @@ __all__ = [
     "database_url",
     "reachable",
 ]
+

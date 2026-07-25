@@ -11,7 +11,7 @@ import asyncio
 import json
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from hoyabit_agent.domain import (
     AnalysisOutcome,
@@ -22,6 +22,8 @@ from hoyabit_agent.domain import (
     Facet,
     Rejection,
     Report,
+    ToolExecutionRecord,
+    ToolExecutionStatus,
     Trace,
     TraceNode,
     TraceNodeKind,
@@ -59,10 +61,13 @@ class _SystemClock:
 class _TraceRecorder:
     """推論軌跡的建構器 —— 分析回合內唯一有副作用的部件，故意隔離。"""
 
-    def __init__(self, clock: Clock) -> None:
+    def __init__(
+        self, clock: Clock, on_trace: Callable[[TraceNode], None] | None = None
+    ) -> None:
         self._clock = clock
         self._start = clock.now()
         self._nodes: list[TraceNode] = []
+        self._on_trace = on_trace
 
     @property
     def elapsed(self) -> float:
@@ -76,20 +81,33 @@ class _TraceRecorder:
         evidence_ids: tuple[str, ...] = (),
         gap_before: frozenset[Facet] = frozenset(),
         gap_after: frozenset[Facet] = frozenset(),
+        executions: tuple[ToolExecutionRecord, ...] = (),
+        gap_state: Mapping[str, object] | None = None,
         detail: Mapping[str, str] | None = None,
     ) -> None:
-        self._nodes.append(
-            TraceNode(
-                seq=len(self._nodes),
-                kind=kind,
-                reason=reason,
-                evidence_ids=evidence_ids,
-                gap_before=gap_before,
-                gap_after=gap_after,
-                elapsed_seconds=self.elapsed,
-                detail=detail or {},
-            )
+        node = TraceNode(
+            seq=len(self._nodes),
+            kind=kind,
+            reason=reason,
+            evidence_ids=evidence_ids,
+            gap_before=gap_before,
+            gap_after=gap_after,
+            elapsed_seconds=self.elapsed,
+            executions=executions,
+            gap_state=gap_state or {},
         )
+        self._nodes.append(node)
+
+        import logging
+        logger = logging.getLogger("hoyabit_agent.trace")
+        exec_info = ""
+        if executions:
+            details = [f"{e.tool}({e.arguments}) -> {e.status.value}" for e in executions]
+            exec_info = f" | Executions: [{', '.join(details)}]"
+        logger.info(f"🤖 [Agent Step: {kind.value.upper()}] (Elapsed: {self.elapsed:.2f}s) - {reason}{exec_info}")
+
+        if self._on_trace is not None:
+            self._on_trace(node)
 
     def build(self, run_id: str) -> Trace:
         return Trace(run_id=run_id, nodes=tuple(self._nodes))
@@ -139,6 +157,7 @@ async def analyse(
     io_timeout_seconds: float = DEFAULT_IO_TIMEOUT_SECONDS,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     run_id: str | None = None,
+    on_trace: Callable[[TraceNode], None] | None = None,
 ) -> AnalysisOutcome:
     """對一個受涵蓋幣種跑一次分析回合。
 
@@ -152,7 +171,7 @@ async def analyse(
     * 被閘門拒絕時 `report` 為 None，但軌跡永遠存在。
     """
     the_clock = clock or _SystemClock()
-    recorder = _TraceRecorder(the_clock)
+    recorder = _TraceRecorder(the_clock, on_trace)
     identifier = run_id or str(uuid.uuid4())
 
     asset = gate_asset(request.asset)
@@ -192,7 +211,13 @@ async def analyse(
             )
             break
 
-        context = GatherContext(asset=asset, gap=gap, evidence=gathered, attempts=attempts)
+        context = GatherContext(
+            asset=asset,
+            gap=gap,
+            evidence=gathered,
+            attempts=attempts,
+            question=request.question,
+        )
         decision = await model.plan(context, tools)
 
         if not decision.invocations:
@@ -203,13 +228,21 @@ async def analyse(
             )
             break
 
+        planned = tuple(
+            ToolExecutionRecord(
+                inv.tool,
+                gate_asset(str(inv.arguments.get("asset", asset.value))) or asset,
+                dict(inv.arguments),
+                ToolExecutionStatus.PLANNED,
+            )
+            for inv in decision.invocations
+        )
         recorder.record(
             TraceNodeKind.PLAN,
             decision.reason,
             gap_before=gap,
             gap_after=gap,
-            # 參數由模型自己選定 —— 這是原生 tool calling 與受控規劃的分野，
-            # 也是軌跡上最能證明「這是真推理」的一欄。
+            executions=planned,
             detail={inv.tool: _describe(inv.arguments) for inv in decision.invocations},
         )
 
@@ -237,6 +270,17 @@ async def analyse(
                 ToolAttempt(invocation.tool, invocation.arguments, f"{len(result)} 項證據")
             )
 
+        completed_records = tuple(
+            ToolExecutionRecord(
+                inv.tool,
+                gate_asset(str(inv.arguments.get("asset", asset.value))) or asset,
+                dict(inv.arguments),
+                ToolExecutionStatus.UNAVAILABLE if res is None else ToolExecutionStatus.SUCCEEDED,
+                "unavailable" if res is None else f"{len(res)} 項證據",
+                tuple(item.id for item in res) if res else (),
+            )
+            for inv, res in zip(decision.invocations, results, strict=True)
+        )
         attempts = attempts + tuple(fresh_attempts)
         gathered = merge_independent_evidence([*gathered, *fresh])
         gap_after = evidence_gap(gathered)
@@ -247,9 +291,16 @@ async def analyse(
             evidence_ids=tuple(item.id for item in fresh),
             gap_before=gap,
             gap_after=gap_after,
+            executions=completed_records,
         )
 
-    report = _assemble(asset, gathered, await model.synthesise(asset, gathered), recorder)
+    report = _assemble(
+        asset,
+        gathered,
+        await model.synthesise(asset, gathered, request.question),
+        recorder,
+        request.question,
+    )
     return AnalysisOutcome(
         run_id=identifier,
         report=report,
@@ -263,6 +314,7 @@ def _assemble(
     gathered: tuple[Evidence, ...],
     drafts: tuple[DraftClaim, ...],
     recorder: _TraceRecorder,
+    question: str = "請分析當前市場狀況",
 ) -> Report:
     """組裝階段 —— 對結構化判斷陣列過濾，過濾後才渲染。"""
     recorder.record(TraceNodeKind.SYNTHESISE, f"推理層產出 {len(drafts)} 則待檢核判斷")
@@ -289,6 +341,7 @@ def _assemble(
         claims=kept,
         dropped_claims=dropped,
         evidence=gathered,
+        question=question,
     )
 
 

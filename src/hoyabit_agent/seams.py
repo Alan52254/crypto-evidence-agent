@@ -19,6 +19,7 @@ from hoyabit_agent.domain import (
     Facet,
     LabelAspect,
 )
+from hoyabit_agent.tools import EvidenceGap
 
 JsonSchema = Mapping[str, Any]
 Arguments = Mapping[str, Any]
@@ -76,6 +77,8 @@ class GatherContext:
     gap: frozenset[Facet]
     evidence: tuple[Evidence, ...]
     attempts: tuple[ToolAttempt, ...]
+    question: str = "請分析當前市場狀況"
+    gap_state: EvidenceGap | None = None
 
 
 @dataclass(frozen=True)
@@ -138,6 +141,7 @@ class ModelProvider(Protocol):
         self,
         asset: Asset,
         evidence: tuple[Evidence, ...],
+        question: str = "請分析當前市場狀況",
     ) -> tuple[DraftClaim, ...]:
         """推理層：從證據推出判斷。
 

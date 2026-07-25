@@ -1,0 +1,563 @@
+[
+  {
+    "evidence_id": "BNC-SPOT-BTC-4h-SMA60",
+    "facet": "technical",
+    "summary": "BTCUSDT 收盤 64219.11，60 期均線 64911.51",
+    "stance_hint": -0.10666760764006601,
+    "related_claim": [
+      "【事實】即時 4 小時 K 線顯示 BTCUSDT 收盤價為 64219.11，低於 60 期均線 64911.51（乖離 -1.07%），14 期 RSI 為 37.6，近 5 期成交量較前 5 期增加 20.4%；另歷史日線數據（截至 2026-05-31 數據截止日）顯示 30 日報酬率為 -5.82%、RSI 為 36.94。【推論】技術指標位處均線下方且 RSI 低於 50 中性區，配合成交量成長 20.4%，顯示市場並非處於成交清淡的靜止盤整，而是帶有下行尋求支撐的波動衝擊。【結論】技術面數據反對「無方向區間盤整」之觀點，當前動能較偏向弱勢尋底。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-SPOT-BTC-4h-SMA60",
+        "source_url": "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=100",
+        "fetched_at": "2026-07-24T19:03:17.391738+00:00",
+        "content_reference": {
+          "locator": "最後 60 根 K 線收盤價",
+          "excerpt": "收盤 64219.11；SMA60 = 64911.51；乖離 -1.07%"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-SPOT-BTC-4h-RSI14",
+    "facet": "technical",
+    "summary": "BTCUSDT 14 期 RSI 為 37.6",
+    "stance_hint": -0.2473652655508566,
+    "related_claim": [
+      "【事實】即時 4 小時 K 線顯示 BTCUSDT 收盤價為 64219.11，低於 60 期均線 64911.51（乖離 -1.07%），14 期 RSI 為 37.6，近 5 期成交量較前 5 期增加 20.4%；另歷史日線數據（截至 2026-05-31 數據截止日）顯示 30 日報酬率為 -5.82%、RSI 為 36.94。【推論】技術指標位處均線下方且 RSI 低於 50 中性區，配合成交量成長 20.4%，顯示市場並非處於成交清淡的靜止盤整，而是帶有下行尋求支撐的波動衝擊。【結論】技術面數據反對「無方向區間盤整」之觀點，當前動能較偏向弱勢尋底。",
+      "【事實】媒體報導文本情緒分化（傾向分數介於 +0.60 至 -0.70 之間）。資料來源包含 2026-05-31 截止之歷史數據與當前即時交易所數據。【推論】在證據採信上，直接且即時的交易所微觀數據（現貨深度與衍生品籌碼）優先於第三方媒體報導情緒。儘管新聞面呈現方向拉鋸（支持盤整），但即時現貨訂單簿賣盤高達 11.22 BTC 且多空帳戶比達 1.91，顯示向下突破風險高於橫盤。【結論】綜合判斷 BTC 短期並非完全「無方向盤整」，而是處於「基本面拉鋸下、籌碼與技術面偏向弱勢下壓」的狀態。可能推翻此判斷的條件包括：現貨賣單阻力大幅消解、ETF 恢復持續淨流入，以及 4 小時 RSI 重回 50 以上。本分析不構成投資建議與保證預測。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-SPOT-BTC-4h-RSI14",
+        "source_url": "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=100",
+        "fetched_at": "2026-07-24T19:03:17.391738+00:00",
+        "content_reference": {
+          "locator": "14 期 Wilder 平滑 RSI",
+          "excerpt": "RSI(14) = 37.63（50 為中性）"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-SPOT-BTC-4h-VOL",
+    "facet": "technical",
+    "summary": "BTCUSDT 近 5 期均量較前 5 期變化 +20.4%",
+    "stance_hint": 0.0,
+    "related_claim": [
+      "【事實】即時 4 小時 K 線顯示 BTCUSDT 收盤價為 64219.11，低於 60 期均線 64911.51（乖離 -1.07%），14 期 RSI 為 37.6，近 5 期成交量較前 5 期增加 20.4%；另歷史日線數據（截至 2026-05-31 數據截止日）顯示 30 日報酬率為 -5.82%、RSI 為 36.94。【推論】技術指標位處均線下方且 RSI 低於 50 中性區，配合成交量成長 20.4%，顯示市場並非處於成交清淡的靜止盤整，而是帶有下行尋求支撐的波動衝擊。【結論】技術面數據反對「無方向區間盤整」之觀點，當前動能較偏向弱勢尋底。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-SPOT-BTC-4h-VOL",
+        "source_url": "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=100",
+        "fetched_at": "2026-07-24T19:03:17.391738+00:00",
+        "content_reference": {
+          "locator": "近 5 期與前 5 期成交量",
+          "excerpt": "均量變化 +20.45%"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-SPOT-BTC-BOOK",
+    "facet": "positioning",
+    "summary": "BTCUSDT 前 50 檔買盤量 1.93、賣盤量 11.22",
+    "stance_hint": -1.0,
+    "related_claim": [
+      "【事實】現貨前 50 檔買盤量 1.93 BTC、賣盤量 11.22 BTC（買賣失衡 -70.68%）；永續合約資金費率為正（+0.0059%）、多空帳戶比達 1.91，未平倉合約（OI）近 30 期增長 3.6%。【推論】現貨賣壓檔頭遠大於買盤支撐，而衍生品市場散戶帳戶多頭佔優且持續加碼，形成「上方現貨賣壓沈重、下方槓桿多頭過度擠壓」的脆弱結構。【結論】籌碼面結構蘊含潛在的多頭清算與下行壓力，不符合「無方向平穩盤整」的特徵。",
+      "【事實】媒體報導文本情緒分化（傾向分數介於 +0.60 至 -0.70 之間）。資料來源包含 2026-05-31 截止之歷史數據與當前即時交易所數據。【推論】在證據採信上，直接且即時的交易所微觀數據（現貨深度與衍生品籌碼）優先於第三方媒體報導情緒。儘管新聞面呈現方向拉鋸（支持盤整），但即時現貨訂單簿賣盤高達 11.22 BTC 且多空帳戶比達 1.91，顯示向下突破風險高於橫盤。【結論】綜合判斷 BTC 短期並非完全「無方向盤整」，而是處於「基本面拉鋸下、籌碼與技術面偏向弱勢下壓」的狀態。可能推翻此判斷的條件包括：現貨賣單阻力大幅消解、ETF 恢復持續淨流入，以及 4 小時 RSI 重回 50 以上。本分析不構成投資建議與保證預測。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-SPOT-BTC-BOOK",
+        "source_url": "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=50",
+        "fetched_at": "2026-07-24T19:03:17.436414+00:00",
+        "content_reference": {
+          "locator": "前 50 檔買賣掛單",
+          "excerpt": "買盤合計 1.9280；賣盤合計 11.2247；失衡 -70.68%"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-SPOT-BTC-SPREAD",
+    "facet": "positioning",
+    "summary": "BTCUSDT 買賣價差為中價的 0.0000%",
+    "stance_hint": 0.0,
+    "related_claim": [
+      "【事實】現貨前 50 檔買盤量 1.93 BTC、賣盤量 11.22 BTC（買賣失衡 -70.68%）；永續合約資金費率為正（+0.0059%）、多空帳戶比達 1.91，未平倉合約（OI）近 30 期增長 3.6%。【推論】現貨賣壓檔頭遠大於買盤支撐，而衍生品市場散戶帳戶多頭佔優且持續加碼，形成「上方現貨賣壓沈重、下方槓桿多頭過度擠壓」的脆弱結構。【結論】籌碼面結構蘊含潛在的多頭清算與下行壓力，不符合「無方向平穩盤整」的特徵。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-SPOT-BTC-SPREAD",
+        "source_url": "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=50",
+        "fetched_at": "2026-07-24T19:03:17.436414+00:00",
+        "content_reference": {
+          "locator": "最佳買價與最佳賣價",
+          "excerpt": "最佳買 64219.11／最佳賣 64219.12；相對價差 0.000016%"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-PERP-BTC-FUNDING",
+    "facet": "positioning",
+    "summary": "BTCUSDT 最新資金費率 +0.0059%，近 30 期均值 +0.0051%",
+    "stance_hint": 0.5080366666666666,
+    "related_claim": [
+      "【事實】現貨前 50 檔買盤量 1.93 BTC、賣盤量 11.22 BTC（買賣失衡 -70.68%）；永續合約資金費率為正（+0.0059%）、多空帳戶比達 1.91，未平倉合約（OI）近 30 期增長 3.6%。【推論】現貨賣壓檔頭遠大於買盤支撐，而衍生品市場散戶帳戶多頭佔優且持續加碼，形成「上方現貨賣壓沈重、下方槓桿多頭過度擠壓」的脆弱結構。【結論】籌碼面結構蘊含潛在的多頭清算與下行壓力，不符合「無方向平穩盤整」的特徵。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-PERP-BTC-FUNDING",
+        "source_url": "https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=30",
+        "fetched_at": "2026-07-24T19:03:17.412016+00:00",
+        "content_reference": {
+          "locator": "近 30 期資金費率",
+          "excerpt": "最新 +0.000059；均值 +0.000051；正值代表多方付費給空方（市場淨多頭）"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-PERP-BTC-OI",
+    "facet": "positioning",
+    "summary": "BTCUSDT 未平倉合約近 30 期變化 +3.6%",
+    "stance_hint": 0.0,
+    "related_claim": [
+      "【事實】現貨前 50 檔買盤量 1.93 BTC、賣盤量 11.22 BTC（買賣失衡 -70.68%）；永續合約資金費率為正（+0.0059%）、多空帳戶比達 1.91，未平倉合約（OI）近 30 期增長 3.6%。【推論】現貨賣壓檔頭遠大於買盤支撐，而衍生品市場散戶帳戶多頭佔優且持續加碼，形成「上方現貨賣壓沈重、下方槓桿多頭過度擠壓」的脆弱結構。【結論】籌碼面結構蘊含潛在的多頭清算與下行壓力，不符合「無方向平穩盤整」的特徵。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-PERP-BTC-OI",
+        "source_url": "https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=4h&limit=30",
+        "fetched_at": "2026-07-24T19:03:17.467089+00:00",
+        "content_reference": {
+          "locator": "近 30 期未平倉合約",
+          "excerpt": "起 102666.36 → 迄 106315.13；變化 +3.55%"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "BNC-PERP-BTC-LSR",
+    "facet": "positioning",
+    "summary": "BTCUSDT 全市場多空帳戶比 1.91",
+    "stance_hint": 1.0,
+    "related_claim": [
+      "【事實】現貨前 50 檔買盤量 1.93 BTC、賣盤量 11.22 BTC（買賣失衡 -70.68%）；永續合約資金費率為正（+0.0059%）、多空帳戶比達 1.91，未平倉合約（OI）近 30 期增長 3.6%。【推論】現貨賣壓檔頭遠大於買盤支撐，而衍生品市場散戶帳戶多頭佔優且持續加碼，形成「上方現貨賣壓沈重、下方槓桿多頭過度擠壓」的脆弱結構。【結論】籌碼面結構蘊含潛在的多頭清算與下行壓力，不符合「無方向平穩盤整」的特徵。"
+    ],
+    "sources": [
+      {
+        "source": "BNC-PERP-BTC-LSR",
+        "source_url": "https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=4h&limit=30",
+        "fetched_at": "2026-07-24T19:03:17.521207+00:00",
+        "content_reference": {
+          "locator": "最新一期多空帳戶比",
+          "excerpt": "多空帳戶比 = 1.9087（1.0 為均衡）"
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-2c68545cfdd7-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 +0.60：Crypto Biz: Is the AI-to-crypto rotation underway?",
+    "stance_hint": 0.6,
+    "related_claim": [
+      "【事實】基本面訊息呈現正負拉鋸：支持因子包括 ETF 資金輪動預期、CLARITY 法案潛在進展與量子技術路線圖；反對與風險因子包括美債殖利率飆升帶動升息預期、地緣政治（伊朗衝突）推升油價、Poolin 礦池申請破產，以及 ETF 結束 7 日淨流入出現單日 2.25 億美元淨流出。【推論】長期機構採用與法規利多被短期宏觀流動性緊縮與地緣政治風險抵銷，導致長短期資金看法分歧。【結論】基本面消息正負交織，為市場「無方向方向猶豫」的觀點提供了支持證據。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/crypto-biz-ai-to-crypto-rotation-bitcoin-etf-inflows-clarity-act?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/crypto-biz-ai-to-crypto-rotation-bitcoin-etf-inflows-clarity-act?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 15:15 發布",
+          "excerpt": "Crypto Biz: Is the AI-to-crypto rotation underway?。Bitcoin ETF inflows, cooling AI momentum and potential regulatory progress under the CLARITY Act are fueling speculation that capital is rotating back into crypto."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-2c68545cfdd7-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 +0.50：Crypto Biz: Is the AI-to-crypto rotation underway?",
+    "stance_hint": 0.5,
+    "related_claim": [
+      "【事實】媒體報導文本情緒分化（傾向分數介於 +0.60 至 -0.70 之間）。資料來源包含 2026-05-31 截止之歷史數據與當前即時交易所數據。【推論】在證據採信上，直接且即時的交易所微觀數據（現貨深度與衍生品籌碼）優先於第三方媒體報導情緒。儘管新聞面呈現方向拉鋸（支持盤整），但即時現貨訂單簿賣盤高達 11.22 BTC 且多空帳戶比達 1.91，顯示向下突破風險高於橫盤。【結論】綜合判斷 BTC 短期並非完全「無方向盤整」，而是處於「基本面拉鋸下、籌碼與技術面偏向弱勢下壓」的狀態。可能推翻此判斷的條件包括：現貨賣單阻力大幅消解、ETF 恢復持續淨流入，以及 4 小時 RSI 重回 50 以上。本分析不構成投資建議與保證預測。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/crypto-biz-ai-to-crypto-rotation-bitcoin-etf-inflows-clarity-act?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/crypto-biz-ai-to-crypto-rotation-bitcoin-etf-inflows-clarity-act?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 15:15 發布",
+          "excerpt": "Crypto Biz: Is the AI-to-crypto rotation underway?。Bitcoin ETF inflows, cooling AI momentum and potential regulatory progress under the CLARITY Act are fueling speculation that capital is rotating back into crypto."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-90865d5d1ff8-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 -0.50：Bitcoin falls under $64K as surging US bond yields boost Fed rate-hike odds",
+    "stance_hint": -0.5,
+    "related_claim": [
+      "【事實】基本面訊息呈現正負拉鋸：支持因子包括 ETF 資金輪動預期、CLARITY 法案潛在進展與量子技術路線圖；反對與風險因子包括美債殖利率飆升帶動升息預期、地緣政治（伊朗衝突）推升油價、Poolin 礦池申請破產，以及 ETF 結束 7 日淨流入出現單日 2.25 億美元淨流出。【推論】長期機構採用與法規利多被短期宏觀流動性緊縮與地緣政治風險抵銷，導致長短期資金看法分歧。【結論】基本面消息正負交織，為市場「無方向方向猶豫」的觀點提供了支持證據。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/bitcoin-falls-under-64k-us-bond-yields-fed-rate-hike-odds?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/bitcoin-falls-under-64k-us-bond-yields-fed-rate-hike-odds?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 14:28 發布",
+          "excerpt": "Bitcoin falls under $64K as surging US bond yields boost Fed rate-hike odds。Bitcoin saw several dips under the $64,000 mark as a Binance “plunge protection team” reemerged with bid liquidity to avoid a deeper BTC price rout."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-90865d5d1ff8-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 -0.50：Bitcoin falls under $64K as surging US bond yields boost Fed rate-hike odds",
+    "stance_hint": -0.5,
+    "related_claim": [
+      "【事實】媒體報導文本情緒分化（傾向分數介於 +0.60 至 -0.70 之間）。資料來源包含 2026-05-31 截止之歷史數據與當前即時交易所數據。【推論】在證據採信上，直接且即時的交易所微觀數據（現貨深度與衍生品籌碼）優先於第三方媒體報導情緒。儘管新聞面呈現方向拉鋸（支持盤整），但即時現貨訂單簿賣盤高達 11.22 BTC 且多空帳戶比達 1.91，顯示向下突破風險高於橫盤。【結論】綜合判斷 BTC 短期並非完全「無方向盤整」，而是處於「基本面拉鋸下、籌碼與技術面偏向弱勢下壓」的狀態。可能推翻此判斷的條件包括：現貨賣單阻力大幅消解、ETF 恢復持續淨流入，以及 4 小時 RSI 重回 50 以上。本分析不構成投資建議與保證預測。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/bitcoin-falls-under-64k-us-bond-yields-fed-rate-hike-odds?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/bitcoin-falls-under-64k-us-bond-yields-fed-rate-hike-odds?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 14:28 發布",
+          "excerpt": "Bitcoin falls under $64K as surging US bond yields boost Fed rate-hike odds。Bitcoin saw several dips under the $64,000 mark as a Binance “plunge protection team” reemerged with bid liquidity to avoid a deeper BTC price rout."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-37ed1952773e-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 +0.30：A quantum roadmap would push Bitcoin much higher: Charles Edwards",
+    "stance_hint": 0.3,
+    "related_claim": [
+      "【事實】基本面訊息呈現正負拉鋸：支持因子包括 ETF 資金輪動預期、CLARITY 法案潛在進展與量子技術路線圖；反對與風險因子包括美債殖利率飆升帶動升息預期、地緣政治（伊朗衝突）推升油價、Poolin 礦池申請破產，以及 ETF 結束 7 日淨流入出現單日 2.25 億美元淨流出。【推論】長期機構採用與法規利多被短期宏觀流動性緊縮與地緣政治風險抵銷，導致長短期資金看法分歧。【結論】基本面消息正負交織，為市場「無方向方向猶豫」的觀點提供了支持證據。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/magazine/bitcoins-biggest-bull-catalyst-may-come-from-fixing-its-biggest-risk-edwards?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/magazine/bitcoins-biggest-bull-catalyst-may-come-from-fixing-its-biggest-risk-edwards?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 13:30 發布",
+          "excerpt": "A quantum roadmap would push Bitcoin much higher: Charles Edwards。A Bitcoin development roadmap that addresses quantum computing risks could see the price surge by “double digits” very quickly, according to Charles Edwards."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-37ed1952773e-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 +0.60：A quantum roadmap would push Bitcoin much higher: Charles Edwards",
+    "stance_hint": 0.6,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/magazine/bitcoins-biggest-bull-catalyst-may-come-from-fixing-its-biggest-risk-edwards?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/magazine/bitcoins-biggest-bull-catalyst-may-come-from-fixing-its-biggest-risk-edwards?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 13:30 發布",
+          "excerpt": "A quantum roadmap would push Bitcoin much higher: Charles Edwards。A Bitcoin development roadmap that addresses quantum computing risks could see the price surge by “double digits” very quickly, according to Charles Edwards."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-b27fdd88447b-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 -0.30：BTC supply in profit eyes 60%, but analysis hints recovery may ‘roll back over’",
+    "stance_hint": -0.3,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/btc-supply-profit-analysis-hints-recovery-roll-over?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/btc-supply-profit-analysis-hints-recovery-roll-over?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 09:43 發布",
+          "excerpt": "BTC supply in profit eyes 60%, but analysis hints recovery may ‘roll back over’。Bitcoin supply profitability improved versus its 2026 low, but analysis warned that a fake recovery had already broken down at the start of June."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-b27fdd88447b-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 -0.40：BTC supply in profit eyes 60%, but analysis hints recovery may ‘roll back over’",
+    "stance_hint": -0.4,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/btc-supply-profit-analysis-hints-recovery-roll-over?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/btc-supply-profit-analysis-hints-recovery-roll-over?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 09:43 發布",
+          "excerpt": "BTC supply in profit eyes 60%, but analysis hints recovery may ‘roll back over’。Bitcoin supply profitability improved versus its 2026 low, but analysis warned that a fake recovery had already broken down at the start of June."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-bd8ae86f6d37-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 -0.60：Bitcoin mining pool Poolin files for Chapter 11 bankruptcy",
+    "stance_hint": -0.6,
+    "related_claim": [
+      "【事實】基本面訊息呈現正負拉鋸：支持因子包括 ETF 資金輪動預期、CLARITY 法案潛在進展與量子技術路線圖；反對與風險因子包括美債殖利率飆升帶動升息預期、地緣政治（伊朗衝突）推升油價、Poolin 礦池申請破產，以及 ETF 結束 7 日淨流入出現單日 2.25 億美元淨流出。【推論】長期機構採用與法規利多被短期宏觀流動性緊縮與地緣政治風險抵銷，導致長短期資金看法分歧。【結論】基本面消息正負交織，為市場「無方向方向猶豫」的觀點提供了支持證據。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/bitcoin-mining-poolin-chapter-11-bankruptcy?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/bitcoin-mining-poolin-chapter-11-bankruptcy?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 08:38 發布",
+          "excerpt": "Bitcoin mining pool Poolin files for Chapter 11 bankruptcy。Bitcoin miner Poolin filed for Chapter 11 bankruptcy and initiated a $52 million sale of its two West Texas mining sites as part of its future creditor recovery program."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-bd8ae86f6d37-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 -0.60：Bitcoin mining pool Poolin files for Chapter 11 bankruptcy",
+    "stance_hint": -0.6,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/bitcoin-mining-poolin-chapter-11-bankruptcy?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/bitcoin-mining-poolin-chapter-11-bankruptcy?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 08:38 發布",
+          "excerpt": "Bitcoin mining pool Poolin files for Chapter 11 bankruptcy。Bitcoin miner Poolin filed for Chapter 11 bankruptcy and initiated a $52 million sale of its two West Texas mining sites as part of its future creditor recovery program."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-a0df79e16f87-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 -0.50：Bitcoin ETFs snap 7-day inflow streak with $225M in outflows",
+    "stance_hint": -0.5,
+    "related_claim": [
+      "【事實】基本面訊息呈現正負拉鋸：支持因子包括 ETF 資金輪動預期、CLARITY 法案潛在進展與量子技術路線圖；反對與風險因子包括美債殖利率飆升帶動升息預期、地緣政治（伊朗衝突）推升油價、Poolin 礦池申請破產，以及 ETF 結束 7 日淨流入出現單日 2.25 億美元淨流出。【推論】長期機構採用與法規利多被短期宏觀流動性緊縮與地緣政治風險抵銷，導致長短期資金看法分歧。【結論】基本面消息正負交織，為市場「無方向方向猶豫」的觀點提供了支持證據。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/bitcoin-etfs-225-million-outflow-end-7-day-inflow-streak?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/bitcoin-etfs-225-million-outflow-end-7-day-inflow-streak?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 07:17 發布",
+          "excerpt": "Bitcoin ETFs snap 7-day inflow streak with $225M in outflows。After attracting nearly $1 billion over seven trading sessions, US-listed spot Bitcoin ETFs recorded their first daily net outflow since July 13."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-a0df79e16f87-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 -0.40：Bitcoin ETFs snap 7-day inflow streak with $225M in outflows",
+    "stance_hint": -0.4,
+    "related_claim": [
+      "【事實】媒體報導文本情緒分化（傾向分數介於 +0.60 至 -0.70 之間）。資料來源包含 2026-05-31 截止之歷史數據與當前即時交易所數據。【推論】在證據採信上，直接且即時的交易所微觀數據（現貨深度與衍生品籌碼）優先於第三方媒體報導情緒。儘管新聞面呈現方向拉鋸（支持盤整），但即時現貨訂單簿賣盤高達 11.22 BTC 且多空帳戶比達 1.91，顯示向下突破風險高於橫盤。【結論】綜合判斷 BTC 短期並非完全「無方向盤整」，而是處於「基本面拉鋸下、籌碼與技術面偏向弱勢下壓」的狀態。可能推翻此判斷的條件包括：現貨賣單阻力大幅消解、ETF 恢復持續淨流入，以及 4 小時 RSI 重回 50 以上。本分析不構成投資建議與保證預測。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/bitcoin-etfs-225-million-outflow-end-7-day-inflow-streak?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/bitcoin-etfs-225-million-outflow-end-7-day-inflow-streak?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 07:17 發布",
+          "excerpt": "Bitcoin ETFs snap 7-day inflow streak with $225M in outflows。After attracting nearly $1 billion over seven trading sessions, US-listed spot Bitcoin ETFs recorded their first daily net outflow since July 13."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-0e72068e30d3-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 +0.00：Here’s what happened in crypto today",
+    "stance_hint": 0.0,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/what-happened-in-crypto-today?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/what-happened-in-crypto-today?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 06:24 發布",
+          "excerpt": "Here’s what happened in crypto today。Need to know what happened in crypto today? Here is the latest news on daily trends and events impacting Bitcoin price, blockchain, DeFi, Web3 and crypto regulation."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-0e72068e30d3-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 +0.00：Here’s what happened in crypto today",
+    "stance_hint": 0.0,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/what-happened-in-crypto-today?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/what-happened-in-crypto-today?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 06:24 發布",
+          "excerpt": "Here’s what happened in crypto today。Need to know what happened in crypto today? Here is the latest news on daily trends and events impacting Bitcoin price, blockchain, DeFi, Web3 and crypto regulation."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-179affc72600-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 -0.60：BitMEX hit with 623 BTC lawsuit on day it announces shutdown",
+    "stance_hint": -0.6,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/bitmex-liquidation-fraud-lawsuit-shutdown?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/bitmex-liquidation-fraud-lawsuit-shutdown?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 05:20 發布",
+          "excerpt": "BitMEX hit with 623 BTC lawsuit on day it announces shutdown。The proposed class action alleges BitMEX used privileged trading access and server freezes to profit from forced liquidations."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-179affc72600-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 -0.70：BitMEX hit with 623 BTC lawsuit on day it announces shutdown",
+    "stance_hint": -0.7,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/bitmex-liquidation-fraud-lawsuit-shutdown?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/bitmex-liquidation-fraud-lawsuit-shutdown?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-24 05:20 發布",
+          "excerpt": "BitMEX hit with 623 BTC lawsuit on day it announces shutdown。The proposed class action alleges BitMEX used privileged trading access and server freezes to profit from forced liquidations."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-4bf5045d747e-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 +0.10：Gemini co-founders sent $10M in Bitcoin to Trump PAC after joint motion with CFTC",
+    "stance_hint": 0.1,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/gemini-winklevoss-bitcoin-donald-trump-pac-cftc-deal?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/gemini-winklevoss-bitcoin-donald-trump-pac-cftc-deal?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-23 21:47 發布",
+          "excerpt": "Gemini co-founders sent $10M in Bitcoin to Trump PAC after joint motion with CFTC。The Bitcoin donation can be used to support Donald Trump as a New York court considers whether to reverse a $5 million settlement between the CFTC and Gemini."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-4bf5045d747e-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 +0.00：Gemini co-founders sent $10M in Bitcoin to Trump PAC after joint motion with CFTC",
+    "stance_hint": 0.0,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/news/gemini-winklevoss-bitcoin-donald-trump-pac-cftc-deal?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/news/gemini-winklevoss-bitcoin-donald-trump-pac-cftc-deal?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-23 21:47 發布",
+          "excerpt": "Gemini co-founders sent $10M in Bitcoin to Trump PAC after joint motion with CFTC。The Bitcoin donation can be used to support Donald Trump as a New York court considers whether to reverse a $5 million settlement between the CFTC and Gemini."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-FUND-196a724f5faa-cointelegraph",
+    "facet": "fundamental",
+    "summary": "事件實質影響 -0.60：Bitcoin slides below $65K as Iran conflict fuels $100 oil and bond-yield surge",
+    "stance_hint": -0.6,
+    "related_claim": [
+      "【事實】基本面訊息呈現正負拉鋸：支持因子包括 ETF 資金輪動預期、CLARITY 法案潛在進展與量子技術路線圖；反對與風險因子包括美債殖利率飆升帶動升息預期、地緣政治（伊朗衝突）推升油價、Poolin 礦池申請破產，以及 ETF 結束 7 日淨流入出現單日 2.25 億美元淨流出。【推論】長期機構採用與法規利多被短期宏觀流動性緊縮與地緣政治風險抵銷，導致長短期資金看法分歧。【結論】基本面消息正負交織，為市場「無方向方向猶豫」的觀點提供了支持證據。"
+    ],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/bitcoin-dips-below-65k-iran-war-sparks-100-oil-us-bond-spike?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/bitcoin-dips-below-65k-iran-war-sparks-100-oil-us-bond-spike?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-23 20:32 發布",
+          "excerpt": "Bitcoin slides below $65K as Iran conflict fuels $100 oil and bond-yield surge。Bitcoin price forecasts diverge as US-Iran war tensions fueled an ongoing oil and bond-market surge, while July Fed rate-hike odds neared 40%."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "NEWS-SENT-196a724f5faa-cointelegraph",
+    "facet": "sentiment",
+    "summary": "cointelegraph 報導的文本傾向 -0.50：Bitcoin slides below $65K as Iran conflict fuels $100 oil and bond-yield surge",
+    "stance_hint": -0.5,
+    "related_claim": [],
+    "sources": [
+      {
+        "source": "cointelegraph:https://cointelegraph.com/markets/bitcoin-dips-below-65k-iran-war-sparks-100-oil-us-bond-spike?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "source_url": "https://cointelegraph.com/markets/bitcoin-dips-below-65k-iran-war-sparks-100-oil-us-bond-spike?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+        "fetched_at": "2026-07-24T19:03:21.480618+00:00",
+        "content_reference": {
+          "locator": "cointelegraph 於 2026-07-23 20:32 發布",
+          "excerpt": "Bitcoin slides below $65K as Iran conflict fuels $100 oil and bond-yield surge。Bitcoin price forecasts diverge as US-Iran war tensions fueled an ongoing oil and bond-market surge, while July Fed rate-hike odds neared 40%."
+        }
+      }
+    ]
+  },
+  {
+    "evidence_id": "MARKET-BTC:2026-05-31",
+    "facet": "technical",
+    "summary": "BTC 截至 2026-05-31 UTC 的 OHLCV 技術面窗口（資料集截止 2026-05-31 UTC）",
+    "stance_hint": 0.0,
+    "related_claim": [
+      "【事實】即時 4 小時 K 線顯示 BTCUSDT 收盤價為 64219.11，低於 60 期均線 64911.51（乖離 -1.07%），14 期 RSI 為 37.6，近 5 期成交量較前 5 期增加 20.4%；另歷史日線數據（截至 2026-05-31 數據截止日）顯示 30 日報酬率為 -5.82%、RSI 為 36.94。【推論】技術指標位處均線下方且 RSI 低於 50 中性區，配合成交量成長 20.4%，顯示市場並非處於成交清淡的靜止盤整，而是帶有下行尋求支撐的波動衝擊。【結論】技術面數據反對「無方向區間盤整」之觀點，當前動能較偏向弱勢尋底。",
+      "【事實】媒體報導文本情緒分化（傾向分數介於 +0.60 至 -0.70 之間）。資料來源包含 2026-05-31 截止之歷史數據與當前即時交易所數據。【推論】在證據採信上，直接且即時的交易所微觀數據（現貨深度與衍生品籌碼）優先於第三方媒體報導情緒。儘管新聞面呈現方向拉鋸（支持盤整），但即時現貨訂單簿賣盤高達 11.22 BTC 且多空帳戶比達 1.91，顯示向下突破風險高於橫盤。【結論】綜合判斷 BTC 短期並非完全「無方向盤整」，而是處於「基本面拉鋸下、籌碼與技術面偏向弱勢下壓」的狀態。可能推翻此判斷的條件包括：現貨賣單阻力大幅消解、ETF 恢復持續淨流入，以及 4 小時 RSI 重回 50 以上。本分析不構成投資建議與保證預測。"
+    ],
+    "sources": [
+      {
+        "source": "dataset:BTC:2026-05-31",
+        "source_url": "(HOYA BIT) 命題數據集 - 2026 雲湧智生：臺灣生成式 AI 應用黑客松競賽\\HOYA_BIT_crypto_market_dataset\\data\\BTC_daily_ohlcv.csv",
+        "fetched_at": "2026-07-24T19:03:17.699399+00:00",
+        "content_reference": {
+          "locator": "CSV rows 1798-1827",
+          "excerpt": "asset=BTC; as_of_date=2026-05-31; window_complete=true; daily_return=-0.0028421433596654663, return_7d=-0.043996259778763265, return_30d=-0.05824714534993934, volatility_30d=0.2492324920246274, sma_7=74619.76857142858, sma_30=78020.936, rsi_14=36.941897653325576, volume_change_1d=-0.07038233230760829, volume_sma_30_ratio=0.5136904811705763; OHLCV: 2026-05-02 O=78231.13000000 H=79199.48000000 L=78040.00000000 C=78686.85000000 V=6150.87642000; 2026-05-03 O=78686.84000000 H=79447.00000000 L=78084.08000000 C=78568.57000000 V=7425.79290000; 2026-05-04 O=78568.58000000 H=80776.99000000 L=78202.00000000 C=79861.01000000 V=26042.96135000; 2026-05-05 O=79861.01000000 H=81791.48000000 L=79808.72000000 C=80905.52000000 V=16947.17995000; 2026-05-06 O=80905.53000000 H=82850.00000000 L=80731.14000000 C=81447.01000000 V=18798.77396000; 2026-05-07 O=81447.01000000 H=81708.32000000 L=79500.00000000 C=80006.00000000 V=16154.80338000; 2026-05-08 O=80006.00000000 H=80500.00000000 L=79181.48000000 C=80193.17000000 V=16001.31009000; 2026-05-09 O=80193.18000000 H=81080.00000000 L=80129.85000000 C=80678.40000000 V=7548.42177000; 2026-05-10 O=80678.41000000 H=82479.32000000 L=80279.77000000 C=82210.07000000 V=12034.31882000; 2026-05-11 O=82210.07000000 H=82380.00000000 L=80462.97000000 C=81745.65000000 V=12951.76056000; 2026-05-12 O=81745.66000000 H=81788.00000000 L=79843.59000000 C=80504.47000000 V=12386.25676000; 2026-05-13 O=80504.47000000 H=81324.64000000 L=78754.65000000 C=79313.61000000 V=14810.05643000; 2026-05-14 O=79313.61000000 H=82048.13000000 L=78922.00000000 C=81089.99000000 V=19727.86807000; 2026-05-15 O=81090.00000000 H=81664.45000000 L=78659.00000000 C=79113.21000000 V=17351.27079000; 2026-05-16 O=79113.20000000 H=79227.77000000 L=77640.00000000 C=78148.05000000 V=12132.86192000; 2026-05-17 O=78148.05000000 H=78599.99000000 L=76735.16000000 C=77457.67000000 V=8442.70220000; 2026-05-18 O=77457.67000000 H=77800.00000000 L=76051.00000000 C=77001.87000000 V=18745.51678000; 2026-05-19 O=77001.88000000 H=77414.62000000 L=76144.71000000 C=76834.36000000 V=11024.85978000; 2026-05-20 O=76834.36000000 H=77853.04000000 L=76516.74000000 C=77552.23000000 V=11296.26307000; 2026-05-21 O=77552.24000000 H=78200.00000000 L=76719.47000000 C=77615.52000000 V=11318.25841000; 2026-05-22 O=77615.52000000 H=77900.00000000 L=75359.18000000 C=75539.50000000 V=11272.36134000; 2026-05-23 O=75539.50000000 H=77404.18000000 L=74289.60000000 C=76752.01000000 V=15086.88814000; 2026-05-24 O=76752.00000000 H=77543.15000000 L=76108.00000000 C=77064.96000000 V=8398.00156000; 2026-05-25 O=77064.96000000 H=77905.52000000 L=76914.25000000 C=77322.01000000 V=7672.32197000; 2026-05-26 O=77322.01000000 H=78080.00000000 L=75677.97000000 C=75930.01000000 V=16953.47629000; 2026-05-27 O=75930.01000000 H=76174.15000000 L=74243.99000000 C=74449.30000000 V=16877.77483000; 2026-05-28 O=74449.31000000 H=74590.77000000 L=72582.82000000 C=73617.51000000 V=21274.02026000; 2026-05-29 O=73617.52000000 H=74514.10000000 L=72512.49000000 C=73460.78000000 V=18686.74141000; 2026-05-30 O=73460.78000000 H=74143.76000000 L=73216.00000000 C=73884.38000000 V=7515.40909000; 2026-05-31 O=73884.38000000 H=74275.66000000 L=73400.00000000 C=73674.39000000 V=6986.45707000"
+        }
+      }
+    ]
+  }
+]

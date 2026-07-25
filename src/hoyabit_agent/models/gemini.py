@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -40,15 +41,16 @@ BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 # 分層（決策 #6）：推理層決定下一步與撰寫判斷，能力天花板決定成敗；
 # 勞務層做高頻低階的打分，呼叫次數是推理層的數十倍但每次都簡單。
 # 兩層可獨立設定 —— 混用同一顆模型會吃光壁鐘預算並撞速率限制。
-DEFAULT_REASONING_MODEL = "gemini-3-flash"
-DEFAULT_LABOUR_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_REASONING_MODEL = "gemini-3.6-flash"
+DEFAULT_LABOUR_MODEL = DEFAULT_REASONING_MODEL
 
 API_KEY_ENV = "GEMINI_API_KEY"
 MODEL_ENV = "GEMINI_MODEL"
 LABOUR_MODEL_ENV = "GEMINI_LABOUR_MODEL"
 
 DEFAULT_TIMEOUT_SECONDS = 90.0
-
+MAX_TRANSIENT_ATTEMPTS = 3
+MAX_RETRY_DELAY_SECONDS = 30.0
 
 
 class GeminiProvider:
@@ -84,12 +86,14 @@ class GeminiProvider:
         api_key = os.environ.get(API_KEY_ENV, "").strip()
         if not api_key:
             return None
-        return cls(
-            client,
-            api_key,
-            model=os.environ.get(MODEL_ENV, DEFAULT_REASONING_MODEL).strip(),
-            labour_model=os.environ.get(LABOUR_MODEL_ENV, DEFAULT_LABOUR_MODEL).strip(),
-        )
+        configured_model = os.environ.get(MODEL_ENV, DEFAULT_REASONING_MODEL).strip()
+        configured_labour = os.environ.get(LABOUR_MODEL_ENV, DEFAULT_LABOUR_MODEL).strip()
+        if configured_model != DEFAULT_REASONING_MODEL or configured_labour != DEFAULT_LABOUR_MODEL:
+            raise ValueError(
+                f"formal inference requires {DEFAULT_REASONING_MODEL}; "
+                f"set {MODEL_ENV} and {LABOUR_MODEL_ENV} to that model"
+            )
+        return cls(client, api_key)
 
     # -- 推理層 ---------------------------------------------------------
 
@@ -128,6 +132,7 @@ class GeminiProvider:
         self,
         asset: Asset,
         evidence: tuple[Evidence, ...],
+        question: str = "請分析當前市場狀況",
     ) -> tuple[DraftClaim, ...]:
         """從證據推出判斷。以 JSON schema 強制結構化輸出。
 
@@ -140,7 +145,7 @@ class GeminiProvider:
         payload = {
             "systemInstruction": {"parts": [{"text": SYNTHESIS_SYSTEM}]},
             "contents": [
-                {"role": "user", "parts": [{"text": synthesis_prompt(asset, evidence)}]}
+                {"role": "user", "parts": [{"text": synthesis_prompt(asset, evidence, question)}]}
             ],
             "generationConfig": {
                 "responseMimeType": "application/json",
@@ -186,27 +191,29 @@ class GeminiProvider:
     # -- 傳輸 -----------------------------------------------------------
 
     async def _post(self, payload: dict[str, Any], *, model: str) -> dict[str, Any] | None:
-        """送一次請求。任何失敗都回傳 None —— 呼叫端據此降級。
-
-        逾時上限由這一層負責：沒有它，一個掛住的 provider 會讓分析回合
-        超過 15 分鐘上限，「永不因逾時而失敗」就破功了。
-        """
+        """Post to Gemini, retrying only temporary quota and service failures."""
         url = f"{BASE_URL}/models/{model}:generateContent"
-        try:
-            response = await asyncio.wait_for(
-                self._client.post(url, params={"key": self._api_key}, json=payload),
-                timeout=self._timeout_seconds,
-            )
-        except (TimeoutError, httpx.HTTPError):
-            return None
-        if response.status_code != 200:
-            return None
-        try:
-            body = response.json()
-        except ValueError:
-            return None
-        return body if isinstance(body, dict) else None
+        for attempt in range(MAX_TRANSIENT_ATTEMPTS):
+            try:
+                response = await asyncio.wait_for(
+                    self._client.post(url, params={"key": self._api_key}, json=payload),
+                    timeout=self._timeout_seconds,
+                )
+            except (TimeoutError, httpx.HTTPError):
+                return None
 
+            if response.status_code == 200:
+                try:
+                    body = response.json()
+                except ValueError:
+                    return None
+                return body if isinstance(body, dict) else None
+
+            transient = response.status_code == 429 or response.status_code >= 500
+            if not transient or attempt + 1 >= MAX_TRANSIENT_ATTEMPTS:
+                return None
+            await asyncio.sleep(_retry_delay(response, attempt))
+        return None
     async def _structured(self, payload: dict[str, Any], *, model: str) -> Any:
         body = await self._post(payload, model=model)
         if body is None:
@@ -218,16 +225,46 @@ class GeminiProvider:
         return None
 
 
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    """Read Google RetryInfo/Retry-After, bounded for the competition budget."""
+    header = response.headers.get("Retry-After", "").strip()
+    try:
+        return min(MAX_RETRY_DELAY_SECONDS, max(0.0, float(header)))
+    except ValueError:
+        pass
+    try:
+        details = response.json().get("error", {}).get("details", [])
+    except ValueError:
+        details = []
+    for detail in details if isinstance(details, list) else []:
+        if not isinstance(detail, dict):
+            continue
+        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)s", str(detail.get("retryDelay", "")))
+        if match:
+            return min(MAX_RETRY_DELAY_SECONDS, float(match.group(1)))
+    return min(MAX_RETRY_DELAY_SECONDS, float(2**attempt))
+
 def _declaration(spec: ToolSpec) -> dict[str, Any]:
     """把 `ToolSpec` 轉成 Gemini 的 function declaration。
 
     這是「一份規格三個消費者」的其中一個消費者 —— 模型看到的介面
     與 MCP 暴露的、我們執行器用的，都來自同一份 `ToolSpec`。
     """
+    parameters = dict(spec.parameters)
+    properties = dict(parameters.get("properties", {}))
+    properties.setdefault(
+        "asset",
+        {
+            "type": "string",
+            "enum": [asset.value for asset in Asset],
+            "description": "Asset to fetch; use both assets for comparison questions.",
+        },
+    )
+    parameters["properties"] = properties
     return {
         "name": spec.name,
         "description": spec.description,
-        "parameters": dict(spec.parameters),
+        "parameters": parameters,
     }
 
 
@@ -248,8 +285,6 @@ def _parts(body: dict[str, Any]) -> list[dict[str, Any]]:
 def _arguments(call: dict[str, Any]) -> dict[str, Any]:
     args = call.get("args")
     return dict(args) if isinstance(args, dict) else {}
-
-
 
 
 __all__ = [

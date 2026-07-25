@@ -8,18 +8,35 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
+import uuid
+from collections.abc import Awaitable, Callable
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from hoyabit_agent.api_contract import outcome_payload
+from hoyabit_agent.config import run_async
+from hoyabit_agent.domain import AnalysisOutcome, AnalysisRequest, TraceNode
+from hoyabit_agent.runtime_events import RuntimeEventBroker
 from hoyabit_agent.seams import AnalysisStore
 from hoyabit_agent.viz.trace_html import render_outcome, trace_json
 
+AnalysisRunner = Callable[
+    [AnalysisRequest, str, Callable[[TraceNode], None]], Awaitable[AnalysisOutcome]
+]
 
-def create_app(store: AnalysisStore) -> Starlette:
+
+def create_app(
+    store: AnalysisStore,
+    runner: AnalysisRunner | None = None,
+    broker: RuntimeEventBroker | None = None,
+) -> Starlette:
+    event_broker = broker or RuntimeEventBroker()
+    tasks: set[asyncio.Task[None]] = set()
     async def index(request: Request) -> Response:
         run_ids = await store.recent()
         if not run_ids:
@@ -52,11 +69,66 @@ def create_app(store: AnalysisStore) -> Starlette:
             return JSONResponse({"error": "not found", "run_id": run_id}, status_code=404)
         return Response(trace_json(outcome), media_type="application/json")
 
+    async def start_analysis(request: Request) -> Response:
+        if runner is None:
+            return JSONResponse({"error": "analysis runner unavailable"}, status_code=503)
+        try:
+            payload = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+        asset = str(payload.get("asset", "")).strip().upper()
+        question = str(payload.get("question", "")).strip()
+        if asset not in {"BTC", "ETH", "SOL", "BNB", "XRP"} or not question:
+            return JSONResponse({"error": "asset and question are required"}, status_code=422)
+        run_id = str(uuid.uuid4())
+        event_broker.begin(run_id)
+
+        async def execute() -> None:
+            try:
+                outcome = await runner(
+                    AnalysisRequest(asset, question),
+                    run_id,
+                    lambda node: event_broker.publish_trace(run_id, node),
+                )
+                await store.save(outcome)
+                event_broker.complete(run_id, outcome_payload(outcome))
+            except Exception as exc:  # noqa: BLE001 — becomes a terminal SSE event
+                event_broker.fail(run_id, f"{type(exc).__name__}: {exc}")
+
+        task = asyncio.create_task(execute())
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
+        return JSONResponse(
+            {"run_id": run_id, "stream_url": f"/api/v1/stream_trace?run_id={run_id}"},
+            status_code=202,
+        )
+
+    async def stream_trace(request: Request) -> Response:
+        run_id = request.query_params.get("run_id", "")
+        return StreamingResponse(
+            event_broker.stream(run_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    async def run_api(request: Request) -> Response:
+        run_id = request.path_params["run_id"]
+        outcome = await store.load(run_id)
+        if outcome is None:
+            return JSONResponse({"error": "not found", "run_id": run_id}, status_code=404)
+        return JSONResponse(outcome_payload(outcome))
     return Starlette(
         routes=[
             Route("/", index),
             Route("/run/{run_id}", show_run),
             Route("/run/{run_id}/trace.json", run_json),
+            Route("/api/v1/analyse", start_analysis, methods=["POST"]),
+            Route("/api/v1/stream_trace", stream_trace),
+            Route("/api/v1/runs/{run_id}", run_api),
         ]
     )
 
@@ -83,22 +155,49 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
     """以真實 Postgres store 起 server。"""
     import uvicorn
 
+    from hoyabit_agent.config import load_dotenv
+    from hoyabit_agent.ingest.runtime import build_competition_sources
+    from hoyabit_agent.models.gemini import GeminiProvider
+    from hoyabit_agent.run import analyse
     from hoyabit_agent.storage.postgres import PostgresAnalysisStore
 
-    app = create_app(PostgresAnalysisStore.from_environment())
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    load_dotenv()
+
+    async def production_runner(
+        request: AnalysisRequest,
+        run_id: str,
+        on_trace: Callable[[TraceNode], None],
+    ) -> AnalysisOutcome:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            model = GeminiProvider.from_environment(client)
+            if model is None:
+                raise RuntimeError("GEMINI_API_KEY is not configured")
+            sources = await build_competition_sources(client, model)
+            return await analyse(
+                request, sources, model, run_id=run_id, on_trace=on_trace
+            )
+
+    app = create_app(PostgresAnalysisStore.from_environment(), production_runner)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     await uvicorn.Server(config).serve()
 
 
 def main() -> int:  # pragma: no cover - 進入點
     import argparse
-    import asyncio
 
     parser = argparse.ArgumentParser(description="啟動推論軌跡前端")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    asyncio.run(serve(args.host, args.port))
+    run_async(serve(args.host, args.port))
     return 0
 
 

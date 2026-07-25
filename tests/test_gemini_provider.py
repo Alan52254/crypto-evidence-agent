@@ -84,27 +84,21 @@ async def test_a_blank_api_key_counts_as_absent(monkeypatch: pytest.MonkeyPatch)
         assert GeminiProvider.from_environment(client) is None
 
 
-async def test_the_model_can_be_overridden_by_environment(
+async def test_environment_rejects_a_non_architectural_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(API_KEY_ENV, "k")
     monkeypatch.setenv(MODEL_ENV, "gemini-3-pro")
-    captured: list[httpx.Request] = []
-    async with responding(gemini_reply({"text": "hi"}), capture=captured) as client:
-        provider = GeminiProvider.from_environment(client)
-        assert provider is not None
-        await provider.plan(context(), (SPEC,))
-
-    assert "gemini-3-pro:generateContent" in str(captured[0].url)
+    async with responding({}) as client:
+        with pytest.raises(ValueError, match="gemini-3.6-flash"):
+            GeminiProvider.from_environment(client)
 
 
 async def test_the_two_tiers_use_two_different_models() -> None:
     """決策 #6：混用同一顆模型會吃光壁鐘預算並撞速率限制。"""
     captured: list[httpx.Request] = []
     async with responding(json_reply({"scores": [0.0], "claims": []}), capture=captured) as client:
-        provider = GeminiProvider(
-            client, "k", model="reasoning-model", labour_model="labour-model"
-        )
+        provider = GeminiProvider(client, "k", model="reasoning-model", labour_model="labour-model")
         await provider.synthesise(Asset.BTC, (evidence("E1", Facet.TECHNICAL, 0.5),))
         await provider.label(["a"])
 
@@ -122,19 +116,15 @@ async def test_planning_uses_the_reasoning_tier() -> None:
     assert "reasoning-model:generateContent" in str(captured[0].url)
 
 
-async def test_the_two_tiers_can_be_configured_independently(
+async def test_environment_rejects_a_separate_labour_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(API_KEY_ENV, "k")
-    monkeypatch.setenv(MODEL_ENV, "big")
+    monkeypatch.setenv(MODEL_ENV, "gemini-3.6-flash")
     monkeypatch.setenv(LABOUR_MODEL_ENV, "small")
-    captured: list[httpx.Request] = []
-    async with responding(json_reply({"scores": [0.0]}), capture=captured) as client:
-        provider = GeminiProvider.from_environment(client)
-        assert provider is not None
-        await provider.label(["a"])
-
-    assert "small:generateContent" in str(captured[0].url)
+    async with responding({}) as client:
+        with pytest.raises(ValueError, match="gemini-3.6-flash"):
+            GeminiProvider.from_environment(client)
 
 
 async def test_a_hanging_model_times_out_instead_of_blowing_the_budget() -> None:
@@ -167,7 +157,14 @@ async def test_tool_specs_become_function_declarations() -> None:
     declarations = sent["tools"][0]["functionDeclarations"]
     assert declarations[0]["name"] == "binance_spot"
     assert declarations[0]["description"] == SPEC.description
-    assert declarations[0]["parameters"] == dict(SPEC.parameters)
+    assert declarations[0]["parameters"]["properties"]["interval"] == {"type": "string"}
+    assert declarations[0]["parameters"]["properties"]["asset"]["enum"] == [
+        "BTC",
+        "ETH",
+        "SOL",
+        "BNB",
+        "XRP",
+    ]
 
 
 async def test_a_function_call_becomes_an_invocation_with_its_arguments() -> None:
@@ -476,3 +473,26 @@ async def test_the_api_key_never_appears_in_what_the_provider_returns() -> None:
         decision = await GeminiProvider(client, "secret-key").plan(context(), (SPEC,))
 
     assert "secret-key" not in decision.reason
+
+
+async def test_transient_quota_limit_retries_then_returns_the_model_result() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(
+                429,
+                headers={"Retry-After": "0"},
+                json={"error": {"message": "quota window", "details": []}},
+            )
+        return httpx.Response(200, json=json_reply({"claims": []}))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        drafts = await GeminiProvider(client, "k").synthesise(
+            Asset.BTC, (evidence("E1", Facet.TECHNICAL, 0.5),)
+        )
+
+    assert drafts == ()
+    assert calls == 2

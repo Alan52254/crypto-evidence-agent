@@ -1,1 +1,1 @@
-"""背景 ingestion 與向量檢索 —— ticket 08。"""
+﻿"""競賽 OHLCV ingestion、Gemini embedding 與時間截斷檢索。"""

@@ -84,6 +84,16 @@ class Evidence:
     event_key: str | None = None
 
 
+class ClaimRole(Enum):
+    FACT = "fact"
+    INFERENCE = "inference"
+    CONCLUSION = "conclusion"
+    COUNTER_EVIDENCE = "counter_evidence"
+    RISK = "risk"
+    INVALIDATION = "invalidation"
+    WATCH = "watch"
+
+
 @dataclass(frozen=True)
 class DraftClaim:
     """推理層輸出的判斷 —— 尚未通過引用檢核。
@@ -95,6 +105,7 @@ class DraftClaim:
     text: str
     evidence_ids: tuple[str, ...]
     facet: Facet
+    role: ClaimRole = ClaimRole.INFERENCE
 
 
 @dataclass(frozen=True)
@@ -104,6 +115,7 @@ class Claim:
     text: str
     evidence_ids: tuple[str, ...]
     facet: Facet
+    role: ClaimRole = ClaimRole.INFERENCE
 
 
 @dataclass(frozen=True)
@@ -144,6 +156,27 @@ class InsufficientEvidence:
 ConfidenceResult = Confidence | InsufficientEvidence
 
 
+class ToolExecutionStatus(Enum):
+    PLANNED = "planned"
+    SUCCEEDED = "succeeded"
+    UNAVAILABLE = "unavailable"
+    TIMED_OUT = "timed_out"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class ToolExecutionRecord:
+    """One lossless tool execution; repeated tool names remain separate records."""
+
+    tool: str
+    asset: Asset
+    arguments: Mapping[str, object]
+    status: ToolExecutionStatus
+    observation: str = ""
+    evidence_ids: tuple[str, ...] = ()
+    duration_seconds: float = 0.0
+
+
 class TraceNodeKind(Enum):
     ASSET_GATE = "asset_gate"
     PLAN = "plan"
@@ -170,7 +203,8 @@ class TraceNode:
     gap_before: frozenset[Facet] = frozenset()
     gap_after: frozenset[Facet] = frozenset()
     elapsed_seconds: float = 0.0
-    detail: Mapping[str, str] = field(default_factory=dict)
+    executions: tuple[ToolExecutionRecord, ...] = ()
+    gap_state: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -203,10 +237,11 @@ class Report:
     claims: tuple[Claim, ...]
     dropped_claims: tuple[DraftClaim, ...]
     evidence: tuple[Evidence, ...]
+    question: str = "請分析當前市場狀況"
 
     def to_markdown(self) -> str:
         """由已過濾的結構化判斷渲染 —— 不是從散文剪裁出來的。"""
-        lines = [f"# {self.asset.value} 分析報告", ""]
+        lines = [f"# {self.asset.value} 分析報告", "", f"**分析題目**：{self.question}", ""]
         lines.append(f"**方向**：{self.stance.value}")
 
         if isinstance(self.confidence, InsufficientEvidence):
@@ -257,6 +292,12 @@ class AnalysisRequest:
     """
 
     asset: str
+    question: str = "請分析當前市場狀況"
+
+    def __post_init__(self) -> None:
+        from hoyabit_agent.sanitizer import sanitize_user_question
+
+        object.__setattr__(self, "question", sanitize_user_question(self.question))
 
 
 @dataclass(frozen=True)
@@ -275,6 +316,7 @@ __all__ = [
     "AnalysisRequest",
     "Asset",
     "Claim",
+    "ClaimRole",
     "Confidence",
     "ConfidenceResult",
     "DraftClaim",
@@ -290,4 +332,6 @@ __all__ = [
     "Trace",
     "TraceNode",
     "TraceNodeKind",
+    "ToolExecutionRecord",
+    "ToolExecutionStatus",
 ]

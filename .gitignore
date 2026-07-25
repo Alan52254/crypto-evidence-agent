@@ -20,5 +20,23 @@ dist/
 # 夥伴不需要它們也能完整開發、測試、執行這個專案。
 .claude/
 
+# 外部 clone 的 skill repos（各有自己的 .git，不是本專案的一部分）
+skills/
+ui-ux-pro-max-skill/
+
+# 設計草稿與暫存 —— 正式設計文件已在 docs/
+.scratch/
+.test-tmp/
+
+# 主辦方競賽資料集 —— 體積大且有版權限制，不進版控
+# 使用方式：解壓後設定 HOYABIT_DATASET_DIR 環境變數指向它
+(HOYA BIT)*/
+
+# Next.js build cache
+.next/
+frontend/.next/
+frontend/node_modules/
+
 # 作業系統
 .DS_Store
+__MACOSX/

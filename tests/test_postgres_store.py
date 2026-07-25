@@ -24,6 +24,8 @@ from hoyabit_agent.domain import (
     Report,
     SourceExcerpt,
     Stance,
+    ToolExecutionRecord,
+    ToolExecutionStatus,
     Trace,
     TraceNode,
     TraceNodeKind,
@@ -242,7 +244,12 @@ async def test_the_tool_arguments_the_model_chose_survive(
                 seq=0,
                 kind=TraceNodeKind.PLAN,
                 reason="技術面全缺",
-                detail={"binance_spot": '{"interval": "4h"}'},
+                executions=(
+                    ToolExecutionRecord(
+                        "binance_spot", Asset.BTC, {"interval": "4h"},
+                        ToolExecutionStatus.PLANNED,
+                    ),
+                ),
             ),
         ),
     )
@@ -252,7 +259,7 @@ async def test_the_tool_arguments_the_model_chose_survive(
 
     loaded = await store.load("run-1")
     assert loaded is not None
-    assert loaded.trace.nodes[0].detail == {"binance_spot": '{"interval": "4h"}'}
+    assert loaded.trace.nodes[0].executions[0].arguments == {"interval": "4h"}
 
 
 # --------------------------------------------------------------------------

@@ -128,7 +128,7 @@ async def test_the_chosen_arguments_appear_in_the_trace() -> None:
     )
 
     plan_node = next(n for n in outcome.trace.nodes if n.kind is TraceNodeKind.PLAN)
-    assert "4h" in plan_node.detail["market"]
+    assert plan_node.executions[0].arguments["interval"] == "4h"
 
 
 async def test_a_hallucinated_tool_name_degrades_instead_of_crashing() -> None:

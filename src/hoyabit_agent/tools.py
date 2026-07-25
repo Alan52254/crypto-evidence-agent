@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from hoyabit_agent.domain import (
     Asset,
@@ -72,21 +74,89 @@ def merge_independent_evidence(evidence: Iterable[Evidence]) -> tuple[Evidence, 
         merged[key] = combined
         ordered[ordered.index(existing)] = combined
 
-    return tuple(ordered)
+    # Tool calls remain lossless in the trace, while report evidence IDs are unique.
+    # Repeated live observations keep the latest values and all distinct excerpts.
+    by_id: dict[str, Evidence] = {}
+    positions: list[str] = []
+    for item in ordered:
+        existing = by_id.get(item.id)
+        if existing is None:
+            by_id[item.id] = item
+            positions.append(item.id)
+            continue
+        excerpts = tuple(dict.fromkeys((*existing.excerpts, *item.excerpts)))
+        by_id[item.id] = Evidence(
+            id=item.id,
+            facet=item.facet,
+            summary=item.summary,
+            stance_hint=item.stance_hint,
+            excerpts=excerpts,
+            event_key=item.event_key or existing.event_key,
+        )
+
+    return tuple(by_id[evidence_id] for evidence_id in positions)
+
+
+@dataclass(frozen=True)
+class EvidenceGap:
+    missing_facets: frozenset[Facet]
+    direction_balance: bool
+    contradiction_facets: frozenset[Facet]
+    independent_sources: int
+    fresh: bool
+    reasons: tuple[str, ...]
+
+    def __bool__(self) -> bool:
+        return bool(self.reasons)
+
+    def __iter__(self) -> Iterator[Facet]:
+        return iter(self.missing_facets)
 
 
 def evidence_gap(
     evidence: Iterable[Evidence],
     minimum_per_facet: int = MINIMUM_EVIDENCE_PER_FACET,
-) -> frozenset[Facet]:
-    """證據缺口 —— 尚未蒐集到足夠證據的證據面。
-
-    這是蒐集迴圈的終止條件，也是模型決定下一步的依據。把「模型該做什麼」
-    從一段模糊的 prompt 變成一個可計算、可顯示、可斷言的狀態。
-    """
-    counts = Counter(item.facet for item in evidence)
-    return frozenset(facet for facet in Facet if counts[facet] < minimum_per_facet)
-
+    *,
+    now: datetime | None = None,
+    max_age: timedelta = timedelta(days=7),
+) -> EvidenceGap:
+    """Return all quality gates that can justify another evidence-gathering round."""
+    items = tuple(evidence)
+    counts = Counter(item.facet for item in items)
+    missing = frozenset(facet for facet in Facet if counts[facet] < minimum_per_facet)
+    positive = any(item.stance_hint > STANCE_THRESHOLD for item in items)
+    negative = any(item.stance_hint < -STANCE_THRESHOLD for item in items)
+    balanced = positive and negative
+    grouped: dict[Facet, list[float]] = {facet: [] for facet in Facet}
+    for item in items:
+        grouped[item.facet].append(item.stance_hint)
+    contradictions = frozenset(
+        facet
+        for facet, hints in grouped.items()
+        if any(value > STANCE_THRESHOLD for value in hints)
+        and any(value < -STANCE_THRESHOLD for value in hints)
+    )
+    sources = {
+        excerpt.source_id
+        for item in items
+        for excerpt in item.excerpts
+        if excerpt.source_id.strip()
+    }
+    reference = now or datetime.now(UTC)
+    timestamps = [excerpt.retrieved_at for item in items for excerpt in item.excerpts]
+    fresh = bool(timestamps) and max(timestamps) >= reference - max_age
+    reasons: list[str] = []
+    if missing:
+        reasons.append("missing_facets")
+    if not balanced:
+        reasons.append("direction_imbalance")
+    if len(sources) < 2:
+        reasons.append("insufficient_independent_sources")
+    if not fresh:
+        reasons.append("stale_evidence")
+    if contradictions:
+        reasons.append("unresolved_contradiction")
+    return EvidenceGap(missing, balanced, contradictions, len(sources), fresh, tuple(reasons))
 
 def facet_stance(evidence: Iterable[Evidence]) -> Stance:
     """單一證據面的方向傾向。每個面必須能獨立產出傾向 —— 這是信心度的前提。"""
@@ -202,7 +272,14 @@ def check_citations(
     for draft in drafts:
         cited = tuple(eid for eid in draft.evidence_ids if eid in known)
         if cited:
-            kept.append(Claim(text=draft.text, evidence_ids=cited, facet=draft.facet))
+            kept.append(
+                Claim(
+                    text=draft.text,
+                    evidence_ids=cited,
+                    facet=draft.facet,
+                    role=draft.role,
+                )
+            )
         else:
             dropped.append(draft)
 

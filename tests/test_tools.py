@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from hoyabit_agent.domain import (
@@ -54,7 +56,7 @@ def test_the_allowlist_is_exactly_the_asset_enum() -> None:
 
 
 def test_no_evidence_means_every_facet_is_a_gap() -> None:
-    assert evidence_gap([]) == frozenset(Facet)
+    assert evidence_gap([]).missing_facets == frozenset(Facet)
 
 
 def test_a_facet_leaves_the_gap_once_it_has_evidence() -> None:
@@ -65,7 +67,7 @@ def test_a_facet_leaves_the_gap_once_it_has_evidence() -> None:
 
 def test_the_gap_is_empty_when_all_four_facets_are_covered() -> None:
     items = [evidence(f"E{i}", facet, 0.5) for i, facet in enumerate(Facet)]
-    assert evidence_gap(items) == frozenset()
+    assert evidence_gap(items).missing_facets == frozenset()
 
 
 # --------------------------------------------------------------------------
@@ -358,3 +360,17 @@ def test_unknown_citations_are_stripped_but_the_claim_survives_on_its_real_ones(
         [evidence("E1", Facet.TECHNICAL, 0.8)],
     )
     assert kept[0].evidence_ids == ("E1",)
+
+
+def test_repeated_tool_evidence_id_is_unique_but_keeps_distinct_excerpts() -> None:
+    first = evidence("BOOK", Facet.TECHNICAL, 0.2)
+    second_base = evidence("BOOK", Facet.TECHNICAL, 0.4)
+    second = replace(
+        second_base, excerpts=(replace(second_base.excerpts[0], text="updated"),)
+    )
+
+    merged = merge_independent_evidence([first, second])
+
+    assert [item.id for item in merged] == ["BOOK"]
+    assert merged[0].stance_hint == 0.4
+    assert len(merged[0].excerpts) == 2

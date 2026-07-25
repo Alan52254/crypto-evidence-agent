@@ -5,7 +5,7 @@ function declarations 與我們自己的執行器，這裡再餵給 MCP。三者
 同一個來源，因此不可能出現「模型以為的介面」與「Kiro 看到的介面」不一致。
 
 用途是把資料層掛到 Kiro / Claude Desktop，用自然語言直接查證
-「BTC 現在的 RSS 新聞有哪些」「這個 RSI 是用哪段 K 線算的」——
+「BTC 的 RSI 是用哪段 OHLCV 算的」「截至指定日期的價格趨勢如何」——
 Demo 現場即席證明資料層是真的，不是預錄的。
 
 依 docs/research/0001，SDK 釘在 1.x：2026-07-28 規格是破壞性改版，
@@ -17,10 +17,12 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
+import httpx
 import mcp.types as types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
+from hoyabit_agent.config import load_dotenv, run_async
 from hoyabit_agent.domain import Asset, Evidence
 from hoyabit_agent.seams import Arguments, EvidenceSource, JsonSchema, ToolSpec
 from hoyabit_agent.tools import gate_asset
@@ -131,6 +133,11 @@ def build_server(sources: Sequence[EvidenceSource]) -> Server[object, object]:
                 )
             ]
 
+        from hoyabit_agent.ingest.historical import TOOL_NAME, insufficiency_reason
+
+        if name == TOOL_NAME and (reason := insufficiency_reason(rest)) is not None:
+            return [types.TextContent(type="text", text=f"證據不足：{reason}")]
+
         found = await source.fetch(asset, rest)
         if not found:
             return [
@@ -152,44 +159,21 @@ async def serve(sources: Sequence[EvidenceSource]) -> None:  # pragma: no cover 
 
 
 async def _serve_live() -> None:  # pragma: no cover - I/O 迴圈
-    """以真實證據源啟動。與分析回合共用同一份實作，不會出現兩套邏輯。"""
-    import httpx
-
-    from hoyabit_agent.ingest.cli import EMBEDDING_DIMENSIONS
-    from hoyabit_agent.ingest.embeddings import HashingEmbedder
-    from hoyabit_agent.ingest.historical import HistoricalEvidenceSource
-    from hoyabit_agent.ingest.postgres_store import PostgresVectorStore
+    """只以 Gemini 查詢競賽 OHLCV 資料庫。"""
+    from hoyabit_agent.ingest.runtime import build_competition_sources
     from hoyabit_agent.models.gemini import GeminiProvider
-    from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
-    from hoyabit_agent.sources.news import NewsRssSource
-    from hoyabit_agent.storage.postgres import reachable
 
-    async with httpx.AsyncClient(
-        timeout=30.0,
-        headers={"user-agent": "hoyabit-agent/0.1 (mcp)"},
-        follow_redirects=True,
-    ) as client:
-        sources: list[EvidenceSource] = [
-            BinanceSpotSource(client),
-            BinanceDerivativesSource(client),
-            NewsRssSource(client, labeller=GeminiProvider.from_environment(client)),
-        ]
-        # 向量庫在線才暴露歷史檢索工具 —— 否則 Kiro 會看到一個永遠回空的工具。
-        if await reachable():
-            sources.append(
-                HistoricalEvidenceSource(
-                    PostgresVectorStore(dimensions=EMBEDDING_DIMENSIONS),
-                    HashingEmbedder(dimensions=EMBEDDING_DIMENSIONS),
-                )
-            )
+    load_dotenv()
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        model = GeminiProvider.from_environment(client)
+        sources = await build_competition_sources(client, model) if model is not None else []
         await serve(sources)
 
 
 def main() -> int:  # pragma: no cover - 進入點
     """`hoyabit-mcp` 的進入點，供 Kiro / Claude Desktop 以 stdio 啟動。"""
-    import asyncio
 
-    asyncio.run(_serve_live())
+    run_async(_serve_live())
     return 0
 
 

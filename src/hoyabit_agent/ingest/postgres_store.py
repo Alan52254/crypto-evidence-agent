@@ -1,19 +1,19 @@
-"""pgvector 向量庫 —— `VectorStore` 的正式實作。
-
-向量以字面量 `'[...]'::vector` 傳遞，因此不需要 pgvector 的 Python 套件，
-只要資料庫裝了 vector 擴充即可。維度必須與 embedder 一致。
-"""
+"""`market_dataset_document` 的 pgvector adapter。"""
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
 
-from hoyabit_agent.domain import Asset, Facet
-from hoyabit_agent.ingest.documents import Document
+from hoyabit_agent.domain import Asset
+from hoyabit_agent.ingest.documents import MarketDocument, MarketIndicators, OhlcvBar
 from hoyabit_agent.ingest.embeddings import Vector
 from hoyabit_agent.storage.postgres import database_url
 
@@ -21,19 +21,22 @@ from hoyabit_agent.storage.postgres import database_url
 def _schema(dimensions: int) -> str:
     return f"""
     CREATE EXTENSION IF NOT EXISTS vector;
-    CREATE TABLE IF NOT EXISTS ingested_document (
-        id            TEXT PRIMARY KEY,
-        asset         TEXT NOT NULL,
-        facet         TEXT NOT NULL,
-        stance_hint   DOUBLE PRECISION NOT NULL,
-        text          TEXT NOT NULL,
-        url           TEXT NOT NULL,
-        published_at  TIMESTAMPTZ NOT NULL,
-        source_id     TEXT NOT NULL,
-        event_key     TEXT,
-        embedding     vector({dimensions}) NOT NULL
+    CREATE TABLE IF NOT EXISTS market_dataset_document (
+        asset                  TEXT NOT NULL,
+        as_of_date             DATE NOT NULL,
+        window_complete        BOOLEAN NOT NULL,
+        ohlcv                  JSONB NOT NULL,
+        indicators             JSONB NOT NULL,
+        source_file            TEXT NOT NULL,
+        source_row_start       INTEGER NOT NULL,
+        source_row_end         INTEGER NOT NULL,
+        embedding_model        TEXT NOT NULL,
+        embedding_dimensions   INTEGER NOT NULL CHECK (embedding_dimensions = {dimensions}),
+        embedding              vector({dimensions}) NOT NULL,
+        PRIMARY KEY (asset, as_of_date, embedding_model)
     );
-    CREATE INDEX IF NOT EXISTS document_by_asset ON ingested_document (asset);
+    CREATE INDEX IF NOT EXISTS market_document_asset_date
+        ON market_dataset_document (asset, as_of_date DESC);
     """
 
 
@@ -41,8 +44,8 @@ def _literal(vector: Vector) -> str:
     return "[" + ",".join(repr(float(component)) for component in vector) + "]"
 
 
-class PostgresVectorStore:
-    def __init__(self, dimensions: int, url: str | None = None) -> None:
+class PostgresMarketDocumentStore:
+    def __init__(self, dimensions: int = 768, url: str | None = None) -> None:
         self._dimensions = dimensions
         self._url = url or database_url()
 
@@ -54,83 +57,138 @@ class PostgresVectorStore:
             await connection.execute(_schema(self._dimensions))
             await connection.commit()
 
-    async def reset(self) -> None:
-        """清空並重建。只給測試用。"""
-        async with await self._connect() as connection:
-            await connection.execute("DROP TABLE IF EXISTS ingested_document")
-            await connection.execute(_schema(self._dimensions))
-            await connection.commit()
-
-    async def upsert(self, entries: Sequence[tuple[Document, Vector]]) -> int:
+    async def upsert(
+        self,
+        entries: Sequence[tuple[MarketDocument, Vector]],
+        *,
+        embedding_model: str,
+    ) -> int:
+        items = list(entries)
+        if any(len(vector) != self._dimensions for _, vector in items):
+            raise ValueError(f"all embeddings must have {self._dimensions} dimensions")
         await self.migrate()
-        entries = list(entries)
-        ids = [document.id for document, _ in entries]
+        keys = [(doc.asset.value, doc.as_of_date, embedding_model) for doc, _ in items]
         async with await self._connect() as connection:
-            existing = await self._existing_ids(connection, ids)
+            existing = await self._existing(connection, keys)
             async with connection.transaction():
-                for document, vector in entries:
+                for document, vector in items:
                     await connection.execute(
-                        "INSERT INTO ingested_document (id, asset, facet, stance_hint, text,"
-                        " url, published_at, source_id, event_key, embedding)"
-                        " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-                        " ON CONFLICT (id) DO UPDATE SET"
-                        " stance_hint = EXCLUDED.stance_hint, text = EXCLUDED.text,"
-                        " embedding = EXCLUDED.embedding",
+                        "INSERT INTO market_dataset_document "
+                        "(asset, as_of_date, window_complete, ohlcv, indicators, source_file, "
+                        "source_row_start, source_row_end, embedding_model, "
+                        "embedding_dimensions, embedding) "
+                        "VALUES (%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,%s,%s,%s,%s::vector) "
+                        "ON CONFLICT (asset, as_of_date, embedding_model) DO UPDATE SET "
+                        "window_complete=EXCLUDED.window_complete, ohlcv=EXCLUDED.ohlcv, "
+                        "indicators=EXCLUDED.indicators, source_file=EXCLUDED.source_file, "
+                        "source_row_start=EXCLUDED.source_row_start, "
+                        "source_row_end=EXCLUDED.source_row_end, "
+                        "embedding_dimensions=EXCLUDED.embedding_dimensions, "
+                        "embedding=EXCLUDED.embedding",
                         (
-                            document.id,
                             document.asset.value,
-                            document.facet.value,
-                            document.stance_hint,
-                            document.text,
-                            document.url,
-                            document.published_at,
-                            document.source_id,
-                            document.event_key,
+                            document.as_of_date,
+                            document.window_complete,
+                            json.dumps([_bar_json(bar) for bar in document.ohlcv]),
+                            json.dumps(vars(document.indicators), allow_nan=False),
+                            str(document.source_file),
+                            document.source_row_start,
+                            document.source_row_end,
+                            embedding_model,
+                            self._dimensions,
                             _literal(vector),
                         ),
                     )
             await connection.commit()
-        return sum(1 for doc_id in set(ids) if doc_id not in existing)
-
-    @staticmethod
-    async def _existing_ids(
-        connection: psycopg.AsyncConnection[Any], ids: Sequence[str]
-    ) -> set[str]:
-        if not ids:
-            return set()
-        async with connection.cursor() as cursor:
-            await cursor.execute(
-                "SELECT id FROM ingested_document WHERE id = ANY(%s)", (list(ids),)
-            )
-            return {str(row["id"]) for row in await cursor.fetchall()}
+        return sum(1 for key in set(keys) if key not in existing)
 
     async def search(
-        self, asset: Asset, query: Vector, limit: int = 5
-    ) -> tuple[Document, ...]:
+        self,
+        asset: Asset,
+        query: Vector,
+        *,
+        as_of_date: date,
+        embedding_model: str,
+        limit: int = 5,
+    ) -> tuple[MarketDocument, ...]:
+        if len(query) != self._dimensions:
+            raise ValueError(f"query embedding must have {self._dimensions} dimensions")
         await self.migrate()
         async with await self._connect() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
-                    "SELECT * FROM ingested_document WHERE asset = %s"
-                    " ORDER BY embedding <=> %s::vector LIMIT %s",
-                    (asset.value, _literal(query), limit),
+                    "SELECT * FROM market_dataset_document "
+                    "WHERE asset=%s AND as_of_date<=%s AND embedding_model=%s "
+                    "AND embedding_dimensions=%s "
+                    "ORDER BY embedding <=> %s::vector LIMIT %s",
+                    (
+                        asset.value,
+                        as_of_date,
+                        embedding_model,
+                        self._dimensions,
+                        _literal(query),
+                        limit,
+                    ),
                 )
                 rows = await cursor.fetchall()
         return tuple(_to_document(row) for row in rows)
 
+    @staticmethod
+    async def _existing(
+        connection: psycopg.AsyncConnection[Any],
+        keys: Sequence[tuple[str, date, str]],
+    ) -> set[tuple[str, date, str]]:
+        if not keys:
+            return set()
+        requested = set(keys)
+        model = keys[0][2]
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                "SELECT asset, as_of_date, embedding_model FROM market_dataset_document "
+                "WHERE embedding_model=%s AND asset=ANY(%s) AND as_of_date=ANY(%s)",
+                (model, list({key[0] for key in keys}), list({key[1] for key in keys})),
+            )
+            existing = {
+                (str(row["asset"]), row["as_of_date"], str(row["embedding_model"]))
+                for row in await cursor.fetchall()
+            }
+        return existing & requested
 
-def _to_document(row: dict[str, Any]) -> Document:
-    return Document(
-        id=row["id"],
+
+def _bar_json(bar: OhlcvBar) -> dict[str, str]:
+    return {
+        "date": bar.date.isoformat(),
+        "open": str(bar.open),
+        "high": str(bar.high),
+        "low": str(bar.low),
+        "close": str(bar.close),
+        "volume": str(bar.volume),
+    }
+
+
+def _to_document(row: dict[str, Any]) -> MarketDocument:
+    raw_bars = row["ohlcv"]
+    raw_indicators = row["indicators"]
+    return MarketDocument(
         asset=Asset(row["asset"]),
-        facet=Facet(row["facet"]),
-        stance_hint=row["stance_hint"],
-        text=row["text"],
-        url=row["url"],
-        published_at=row["published_at"],
-        source_id=row["source_id"],
-        event_key=row["event_key"],
+        as_of_date=row["as_of_date"],
+        ohlcv=tuple(
+            OhlcvBar(
+                date=date.fromisoformat(item["date"]),
+                open=Decimal(item["open"]),
+                high=Decimal(item["high"]),
+                low=Decimal(item["low"]),
+                close=Decimal(item["close"]),
+                volume=Decimal(item["volume"]),
+            )
+            for item in raw_bars
+        ),
+        indicators=MarketIndicators(**raw_indicators),
+        window_complete=bool(row["window_complete"]),
+        source_file=Path(row["source_file"]),
+        source_row_start=int(row["source_row_start"]),
+        source_row_end=int(row["source_row_end"]),
     )
 
 
-__all__ = ["PostgresVectorStore"]
+__all__ = ["PostgresMarketDocumentStore"]

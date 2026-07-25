@@ -1,0 +1,224 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base Reset ─── */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+* {
+  border-color: #c6c6cd;
+}
+.dark * {
+  border-color: #3a3f47;
+}
+
+html, body {
+  min-height: 100%;
+  background: #f7f9fb;
+}
+.dark html, .dark body, html.dark, html.dark body {
+  background: #0f1218;
+}
+
+body {
+  margin: 0;
+  color: #191c1e;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.dark body {
+  color: #e4e6ea;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #000000;
+  outline-offset: 2px;
+}
+
+/* ─── Tabular Numbers ─── */
+.tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ─── Custom Scrollbar ─── */
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background-color: #c6c6cd;
+  border-radius: 20px;
+}
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #76777d;
+}
+
+/* Thin scrollbar for sidebar / right panel */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: #c6c6cd;
+  border-radius: 20px;
+}
+
+/* ─── AI Message Card ─── */
+.ai-card {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04),
+              0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  transition: box-shadow 0.15s ease;
+}
+.ai-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05),
+              0 2px 4px -2px rgba(0, 0, 0, 0.03);
+}
+
+/* ─── Dot pulse animation stagger ─── */
+.dot-delay-1 { animation-delay: 0s; }
+.dot-delay-2 { animation-delay: 0.2s; }
+.dot-delay-3 { animation-delay: 0.4s; }
+
+/* ─── Reduced Motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ─── Gradient Mask for Input Area ─── */
+.input-gradient-mask {
+  background: linear-gradient(
+    to top,
+    #f7f9fb 70%,
+    transparent 100%
+  );
+}
+.dark .input-gradient-mask {
+  background: linear-gradient(
+    to top,
+    #0f1218 70%,
+    transparent 100%
+  );
+}
+
+/* ─── Dark Mode Scrollbar ─── */
+.dark .chat-scroll::-webkit-scrollbar-thumb {
+  background-color: #3a3f47;
+}
+.dark .chat-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #565e74;
+}
+.dark .sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: #3a3f47;
+}
+
+/* ─── Dark Mode Theme Overrides ─── */
+html.dark {
+  /* Recolor all bg-surface-* utilities via specificity override */
+  --dark-surface: #0f1218;
+  --dark-surface-container-lowest: #1a1f28;
+  --dark-surface-container-low: #1f2530;
+  --dark-surface-container: #252b37;
+  --dark-surface-container-high: #2c3340;
+  --dark-surface-container-highest: #343b49;
+  --dark-primary: #ffffff;
+  --dark-on-primary: #0f1218;
+  --dark-secondary: #8b95a8;
+  --dark-outline-variant: #3a3f47;
+  --dark-on-surface: #e4e6ea;
+}
+
+/* Override background and text in dark mode */
+html.dark .bg-background,
+html.dark .bg-surface {
+  background-color: #0f1218 !important;
+}
+html.dark .bg-surface-container-lowest {
+  background-color: #1a1f28 !important;
+}
+html.dark .bg-surface-container-low {
+  background-color: #1f2530 !important;
+}
+html.dark .bg-surface-container {
+  background-color: #252b37 !important;
+}
+html.dark .bg-surface-container-high {
+  background-color: #2c3340 !important;
+}
+html.dark .bg-surface-container-highest {
+  background-color: #343b49 !important;
+}
+html.dark .bg-surface\/95 {
+  background-color: rgba(15, 18, 24, 0.95) !important;
+}
+html.dark .bg-primary {
+  background-color: #c8d0e8 !important;
+}
+html.dark .bg-primary\/5 {
+  background-color: rgba(200, 208, 232, 0.05) !important;
+}
+html.dark .bg-primary\/10 {
+  background-color: rgba(200, 208, 232, 0.1) !important;
+}
+html.dark .text-primary {
+  color: #e4e6ea !important;
+}
+html.dark .text-on-primary {
+  color: #0f1218 !important;
+}
+html.dark .text-secondary {
+  color: #8b95a8 !important;
+}
+html.dark .text-on-surface {
+  color: #e4e6ea !important;
+}
+html.dark .text-on-surface-variant {
+  color: #a0a8b8 !important;
+}
+html.dark .text-outline {
+  color: #565e74 !important;
+}
+html.dark .border-outline-variant {
+  border-color: #2c3340 !important;
+}
+html.dark .border-outline-variant\/50 {
+  border-color: rgba(44, 51, 64, 0.5) !important;
+}
+html.dark .border-outline-variant\/60 {
+  border-color: rgba(44, 51, 64, 0.6) !important;
+}
+html.dark .shadow-card {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.2) !important;
+}
+html.dark .shadow-dropdown {
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -2px rgba(0, 0, 0, 0.3) !important;
+}
+html.dark .placeholder\:text-secondary::placeholder {
+  color: #6b7280 !important;
+}
+html.dark .placeholder\:text-secondary\/60::placeholder {
+  color: rgba(107, 114, 128, 0.6) !important;
+}
+html.dark .ai-card {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
+}

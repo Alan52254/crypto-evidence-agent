@@ -7,17 +7,15 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import sys
 
 import httpx
 
-from hoyabit_agent.cli import _fallback_model, _pick_model
+from hoyabit_agent.cli import _pick_model
+from hoyabit_agent.config import run_async
 from hoyabit_agent.domain import Asset, DraftClaim, Facet
 from hoyabit_agent.evaluation import EvalCase, Scorecard, evaluate
 from hoyabit_agent.seams import ModelProvider, Sources
-from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
-from hoyabit_agent.sources.news import NewsRssSource
 from hoyabit_agent.testing import ScriptedModel, StaticSource, evidence
 
 COVERED = tuple(asset.value for asset in Asset)
@@ -58,33 +56,19 @@ async def _run_offline() -> Scorecard:
 
 
 async def _run_live() -> Scorecard:
-    """真實跑：五大幣種共用一個 HTTP 客戶端與資料源。
+    """以 Gemini 與競賽 OHLCV source 評估五個受涵蓋幣種。"""
+    from hoyabit_agent.config import load_dotenv
+    from hoyabit_agent.ingest.runtime import build_competition_sources
 
-    有真實模型（地端或雲端）就重用它（無狀態）；沒有就每案給一份新的
-    腳本後備 —— 後備是有狀態的，不能跨案例共用。
-    """
-    async with httpx.AsyncClient(
-        timeout=30.0,
-        headers={"user-agent": "hoyabit-agent/0.1 (eval)"},
-        follow_redirects=True,
-    ) as client:
+    load_dotenv()
+    async with httpx.AsyncClient(timeout=90.0) as client:
         model, description = _pick_model(client)
-        sources: Sources = [
-            BinanceSpotSource(client),
-            BinanceDerivativesSource(client),
-            NewsRssSource(client, labeller=model),
-        ]
-        if model is not None:
-            print(f"（推理層：{description}）\n")
-            return await evaluate(
-                [EvalCase(a) for a in COVERED], sources=sources, model_for=lambda _: model
-            )
-
-        print("（未設定模型：以腳本後備跑，判斷會是空的，成功率反映的是資料層而非推理。）\n")
+        if model is None:
+            raise RuntimeError("缺少 GEMINI_API_KEY，正式評估不提供非 Gemini fallback")
+        sources: Sources = await build_competition_sources(client, model)
+        print(f"（推理層：{description}）\n")
         return await evaluate(
-            [EvalCase(a) for a in COVERED],
-            sources_for=lambda _: sources,
-            model_for=lambda _: _fallback_model(),
+            [EvalCase(asset) for asset in COVERED], sources=sources, model_for=lambda _: model
         )
 
 
@@ -96,11 +80,9 @@ async def _run(live: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="跑評估基準並印出成績單")
-    parser.add_argument(
-        "--live", action="store_true", help="對五大幣種各跑一次真實分析（免金鑰）"
-    )
+    parser.add_argument("--live", action="store_true", help="對五大幣種各跑一次真實分析（免金鑰）")
     args = parser.parse_args(argv)
-    return asyncio.run(_run(args.live))
+    return int(run_async(_run(args.live)))
 
 
 if __name__ == "__main__":  # pragma: no cover

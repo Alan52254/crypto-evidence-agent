@@ -185,6 +185,7 @@ class ScriptedModel:
         self,
         asset: Asset,
         evidence: tuple[Evidence, ...],
+        question: str = "請分析當前市場狀況",
     ) -> tuple[DraftClaim, ...]:
         return self._claims
 

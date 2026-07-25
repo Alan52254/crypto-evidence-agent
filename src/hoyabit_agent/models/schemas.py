@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from hoyabit_agent.domain import DraftClaim, Facet
+from hoyabit_agent.domain import ClaimRole, DraftClaim, Facet
 from hoyabit_agent.indicators import clamp
 
 CLAIMS_SCHEMA: dict[str, Any] = {
@@ -28,8 +28,12 @@ CLAIMS_SCHEMA: dict[str, Any] = {
                         "description": "支撐這則判斷的證據 ID，必須來自提供的清單。",
                     },
                     "facet": {"type": "string", "enum": [facet.value for facet in Facet]},
+                    "role": {
+                        "type": "string",
+                        "enum": [role.value for role in ClaimRole],
+                    },
                 },
-                "required": ["text", "evidence_ids", "facet"],
+                "required": ["text", "evidence_ids", "facet", "role"],
             },
         }
     },
@@ -94,12 +98,14 @@ def to_draft(raw: Any) -> DraftClaim | None:
         return None
     try:
         facet = Facet(raw.get("facet"))
+        role = ClaimRole(raw.get("role", ClaimRole.INFERENCE.value))
     except ValueError:
         return None
     return DraftClaim(
         text=text.strip(),
         evidence_ids=tuple(str(item) for item in ids if isinstance(item, str)),
         facet=facet,
+        role=role,
     )
 
 

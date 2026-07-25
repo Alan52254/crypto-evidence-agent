@@ -11,6 +11,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS analysis_run (
     run_id            TEXT PRIMARY KEY,
     asset             TEXT,
+    question          TEXT NOT NULL DEFAULT '請分析當前市場狀況',
     stance            TEXT,
     rejection_reason  TEXT,
     -- 信心度可能算不出來，所以值可為 NULL，但「為什麼算不出來」一定要記。
@@ -20,6 +21,8 @@ CREATE TABLE IF NOT EXISTS analysis_run (
     facets_present            JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE analysis_run ADD COLUMN IF NOT EXISTS question TEXT NOT NULL
+    DEFAULT '請分析當前市場狀況';
 
 -- 證據。不可變，識別碼在同一個回合內唯一。
 -- 刻意以 (run_id, evidence_id) 為主鍵而非全域唯一：同一項證據在不同回合
@@ -58,6 +61,7 @@ CREATE TABLE IF NOT EXISTS claim (
     run_id        TEXT NOT NULL REFERENCES analysis_run(run_id) ON DELETE CASCADE,
     text          TEXT NOT NULL,
     facet         TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'inference', 
     evidence_ids  JSONB NOT NULL,
     kept          BOOLEAN NOT NULL,
     position      INTEGER NOT NULL
@@ -73,10 +77,17 @@ CREATE TABLE IF NOT EXISTS trace_node (
     gap_before       JSONB NOT NULL,
     gap_after        JSONB NOT NULL,
     elapsed_seconds  DOUBLE PRECISION NOT NULL,
-    detail           JSONB NOT NULL,
+    detail           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    executions       JSONB NOT NULL DEFAULT '[]'::jsonb,
+    gap_state        JSONB NOT NULL DEFAULT '{}'::jsonb,
     PRIMARY KEY (run_id, seq)
 );
+
+ALTER TABLE claim ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'inference';
+ALTER TABLE trace_node ADD COLUMN IF NOT EXISTS executions JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE trace_node ADD COLUMN IF NOT EXISTS gap_state JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS evidence_by_facet ON evidence (run_id, facet);
 CREATE INDEX IF NOT EXISTS excerpt_by_evidence ON source_excerpt (run_id, evidence_id);
 CREATE INDEX IF NOT EXISTS run_by_recency ON analysis_run (created_at DESC);
+

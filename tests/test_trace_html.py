@@ -18,6 +18,8 @@ from hoyabit_agent.domain import (
     Rejection,
     Report,
     Stance,
+    ToolExecutionRecord,
+    ToolExecutionStatus,
     Trace,
     TraceNode,
     TraceNodeKind,
@@ -43,7 +45,14 @@ def an_outcome() -> AnalysisOutcome:
                 seq=1,
                 kind=TraceNodeKind.PLAN,
                 reason="技術面全缺",
-                detail={"binance_spot": '{"interval": "4h"}'},
+                executions=(
+                    ToolExecutionRecord(
+                        "binance_spot",
+                        Asset.BTC,
+                        {"interval": "4h"},
+                        ToolExecutionStatus.PLANNED,
+                    ),
+                ),
                 gap_before=frozenset(Facet),
                 gap_after=frozenset(Facet),
                 elapsed_seconds=0.5,
@@ -161,4 +170,4 @@ def test_trace_json_is_valid_and_ordered() -> None:
     payload = json.loads(trace_json(an_outcome()))
     assert payload["run_id"] == "run-1"
     assert [node["seq"] for node in payload["nodes"]] == [0, 1, 2]
-    assert payload["nodes"][1]["detail"] == {"binance_spot": '{"interval": "4h"}'}
+    assert payload["nodes"][1]["executions"][0]["arguments"] == {"interval": "4h"}

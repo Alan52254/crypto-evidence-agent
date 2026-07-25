@@ -1,21 +1,23 @@
 """Demo CLI —— 跑一次分析回合並印出報告與推論軌跡。
 
 預設跑離線的假證據源（快、可重現、適合展示流程）；
-加上 `--live` 就改打真實的 Binance 與新聞 RSS ——
+加上 `--live` 就改用 Gemini 與競賽 OHLCV 資料集 ——
 **分析回合本身一行都不用改**，那正是接縫存在的意義。
 """
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 import contextlib
 import sys
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 
 from hoyabit_agent import AnalysisRequest, analyse
+from hoyabit_agent.artifacts import write_submission
+from hoyabit_agent.config import run_async
 from hoyabit_agent.domain import (
     AnalysisOutcome,
     DraftClaim,
@@ -23,11 +25,7 @@ from hoyabit_agent.domain import (
     Trace,
 )
 from hoyabit_agent.models.gemini import API_KEY_ENV, GeminiProvider
-from hoyabit_agent.models.local import MODEL_ENV as LOCAL_MODEL_ENV
-from hoyabit_agent.models.local import LocalOpenAIProvider
-from hoyabit_agent.seams import EvidenceSource, ModelProvider, Sources
-from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
-from hoyabit_agent.sources.news import NewsRssSource
+from hoyabit_agent.seams import ModelProvider, Sources
 from hoyabit_agent.storage.postgres import (
     PostgresAnalysisStore,
     database_url,
@@ -96,78 +94,26 @@ def _demo_model() -> ModelProvider:
 
 
 def _pick_model(client: httpx.AsyncClient) -> tuple[ModelProvider | None, str]:
-    """選一個模型供應者。回傳 (供應者, 說明)。
-
-    優先序刻意是**地端優先** —— 有人特地設了地端模型，就代表他想用它；
-    雲端金鑰常常只是留在環境變數裡沒清掉。
-    """
-    local = LocalOpenAIProvider.from_environment(client)
-    if local is not None:
-        return local, f"地端模型（{LOCAL_MODEL_ENV}）"
-
+    """Gemini 是唯一正式推理 adapter。"""
     gemini = GeminiProvider.from_environment(client)
     if gemini is not None:
-        return gemini, f"雲端 Gemini（{API_KEY_ENV}）"
-
+        return gemini, f"Gemini（{API_KEY_ENV}）"
     return None, ""
 
 
 @contextlib.asynccontextmanager
 async def _live_stack() -> AsyncIterator[tuple[Sources, ModelProvider, str]]:
-    """真實證據源與模型。共用一個 HTTP 客戶端，離開時一併關閉。
+    """只暴露 Gemini 與競賽 OHLCV 資料集；缺 key 時明確失敗。"""
+    from hoyabit_agent.config import load_dotenv
+    from hoyabit_agent.ingest.runtime import build_competition_sources
 
-    有模型就由它驅動推理與打分；沒有就退回腳本規劃與詞典打分 ——
-    **整條流程仍然完整可跑**，只是判斷會是空的。
-    誠實地顯示「證據齊備但無判斷」，好過編造內容。
-    """
-    async with httpx.AsyncClient(
-        timeout=30.0,
-        headers={"user-agent": "hoyabit-agent/0.1 (research)"},
-        follow_redirects=True,
-    ) as client:
+    load_dotenv()
+    async with httpx.AsyncClient(timeout=90.0) as client:
         model, description = _pick_model(client)
-        sources: list[EvidenceSource] = [
-            BinanceSpotSource(client),
-            BinanceDerivativesSource(client),
-            NewsRssSource(client, labeller=model),
-        ]
-        # 向量庫上線了才掛歷史檢索 —— 沒有它，這個工具只會回空集合、白佔一格。
-        historical = await _historical_source()
-        if historical is not None:
-            sources.append(historical)
-        yield sources, model or _fallback_model(), description
-
-
-async def _historical_source() -> EvidenceSource | None:
-    """若向量庫連得上，回傳歷史檢索證據源；否則 None。"""
-    from hoyabit_agent.ingest.cli import EMBEDDING_DIMENSIONS
-    from hoyabit_agent.ingest.embeddings import HashingEmbedder
-    from hoyabit_agent.ingest.historical import HistoricalEvidenceSource
-    from hoyabit_agent.ingest.postgres_store import PostgresVectorStore
-    from hoyabit_agent.storage.postgres import reachable
-
-    if not await reachable():
-        return None
-    return HistoricalEvidenceSource(
-        PostgresVectorStore(dimensions=EMBEDDING_DIMENSIONS),
-        HashingEmbedder(dimensions=EMBEDDING_DIMENSIONS),
-    )
-
-
-def _fallback_model() -> ModelProvider:
-    """沒有金鑰時的腳本規劃：照樣把三個來源都打過一輪。"""
-    return ScriptedModel(
-        plans=[
-            ("binance_spot", "四個證據面全缺，先取現貨 K 線與盤口"),
-            ("binance_derivatives,crypto_news", "技術面已有，補籌碼面與新聞"),
-        ],
-        arguments={
-            "binance_spot": {"interval": "1d", "limit": 250, "depth": 100},
-            "binance_derivatives": {"period": "1d", "limit": 30},
-            "crypto_news": {"hours": 48, "limit": 12},
-        },
-        claims=[],
-    )
+        if model is None:
+            raise RuntimeError("缺少 GEMINI_API_KEY，正式分析不提供非 Gemini fallback")
+        sources = await build_competition_sources(client, model)
+        yield sources, model, description
 
 
 def _render_trace(trace: Trace) -> str:
@@ -175,8 +121,12 @@ def _render_trace(trace: Trace) -> str:
     for node in trace.nodes:
         lines.append(f"[{node.seq:02d}] {node.elapsed_seconds:6.2f}s  {node.kind.value}")
         lines.append(f"      理由：{node.reason}")
-        for key, value in sorted(node.detail.items()):
-            lines.append(f"      調用 {key}({value})")
+        for execution in node.executions:
+            lines.append(
+                f"      調用 {execution.tool}[{execution.asset.value}]"
+                f"({dict(execution.arguments)}) → {execution.status.value}: "
+                f"{execution.observation}"
+            )
         if node.evidence_ids:
             lines.append(f"      產出證據：{', '.join(node.evidence_ids)}")
         if node.gap_before != node.gap_after:
@@ -193,7 +143,7 @@ def _render_evidence(outcome: AnalysisOutcome) -> str:
     for item in outcome.report.evidence:
         lines.append(f"- [{item.id}] {item.facet.value}  傾向 {item.stance_hint:+.2f}")
         for excerpt in item.excerpts:
-            lines.append(f'    「{excerpt.text}」')
+            lines.append(f"    「{excerpt.text}」")
             lines.append(f"    出處 {excerpt.url}  擷取於 {excerpt.retrieved_at:%Y-%m-%d %H:%M}")
     return "\n".join(lines)
 
@@ -220,20 +170,30 @@ async def _persist(outcome: AnalysisOutcome) -> None:
     print(f"（已存檔：run_id={outcome.run_id}）")
 
 
-async def _run(asset: str, *, live: bool, save: bool, html_path: str | None) -> int:
-    request = AnalysisRequest(asset=asset)
+async def _run(
+    asset: str,
+    *,
+    question: str = "請分析當前市場狀況",
+    live: bool,
+    save: bool,
+    html_path: str | None,
+    output_dir: Path | None = None,
+) -> int:
+    request = AnalysisRequest(asset=asset, question=question)
     if live:
-        async with _live_stack() as (sources, model, description):
-            if description:
+        try:
+            async with _live_stack() as (sources, model, description):
                 print(f"（推理層：{description}）")
-            else:
-                print(f"（未設定 {LOCAL_MODEL_ENV} 或 {API_KEY_ENV}：")
-                print("  推理層退回腳本規劃、情緒打分退回詞典 —— 流程仍完整可跑，")
-                print("  但判斷會是空的。設定其中之一即可啟用完整推理。）")
-            print()
-            outcome = await analyse(request, sources, model)
+                print()
+                outcome = await analyse(request, sources, model)
+        except RuntimeError as error:
+            print(str(error))
+            return 2
     else:
         outcome = await analyse(request, _demo_sources(), _demo_model())
+    if output_dir is not None:
+        paths = write_submission(outcome, output_dir)
+        print(f"（提交物：{paths[0].parent}）")
 
     if outcome.rejection is not None:
         print(f"已拒絕：{outcome.rejection.reason}")
@@ -272,9 +232,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="跑一次加密貨幣分析回合（demo）")
     parser.add_argument("asset", help="受涵蓋幣種：BTC / ETH / SOL / BNB / XRP")
     parser.add_argument(
+        "-q",
+        "--question",
+        default="請分析當前市場狀況",
+        help="競賽現場公布的完整分析題目",
+    )
+    parser.add_argument(
         "--live",
         action="store_true",
-        help="改打真實的 Binance 公開端點與新聞 RSS（免金鑰）",
+        help="改用 Gemini 與競賽 OHLCV 資料集",
     )
     parser.add_argument(
         "--save",
@@ -282,12 +248,29 @@ def main(argv: list[str] | None = None) -> int:
         help="把這次回合存進 Postgres（連不到就略過，不會讓分析失敗）",
     )
     parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="提交物根目錄；live 模式預設 submissions/",
+    )
+    parser.add_argument(
         "--html",
         metavar="PATH",
         help="把推論軌跡輸出成自包含 HTML 檔（可直接用瀏覽器開）",
     )
     args = parser.parse_args(argv)
-    return asyncio.run(_run(args.asset, live=args.live, save=args.save, html_path=args.html))
+    return int(
+        run_async(
+            _run(
+                args.asset,
+                question=args.question,
+                live=args.live,
+                save=args.save,
+                html_path=args.html,
+                output_dir=args.output_dir or (Path("submissions") if args.live else None),
+            )
+        )
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

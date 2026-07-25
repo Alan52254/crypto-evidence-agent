@@ -1,0 +1,80 @@
+openapi: 3.1.0
+info:
+  title: HOYA BIT Agent Runtime API
+  version: 1.0.0
+paths:
+  /api/v1/analyse:
+    post:
+      summary: Start an asynchronous market-analysis run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisStartRequest'
+      responses:
+        '202':
+          description: Run accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisStartResponse'
+  /api/v1/stream_trace:
+    get:
+      summary: Stream auditable Agent runtime events
+      parameters:
+        - in: query
+          name: run_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: SSE stream; event names are trace, complete, and error
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/TraceStreamEvent'
+components:
+  schemas:
+    AnalysisStartRequest:
+      type: object
+      required: [asset, question]
+      properties:
+        asset: { type: string, enum: [BTC, ETH, SOL, BNB, XRP] }
+        question: { type: string, minLength: 1, maxLength: 2000 }
+    AnalysisStartResponse:
+      type: object
+      required: [run_id, stream_url]
+      properties:
+        run_id: { type: string }
+        stream_url: { type: string }
+    ToolExecutionRecord:
+      type: object
+      required: [tool, asset, arguments, status, observation, evidence_ids, duration_seconds]
+      properties:
+        tool: { type: string }
+        asset: { type: string }
+        arguments: { type: object, additionalProperties: true }
+        status: { type: string, enum: [planned, succeeded, unavailable, timed_out, failed] }
+        observation: { type: string }
+        evidence_ids: { type: array, items: { type: string } }
+        duration_seconds: { type: number, minimum: 0 }
+    TraceStreamEvent:
+      type: object
+      required: [run_id, seq, kind, reason, elapsed_seconds, executions]
+      properties:
+        run_id: { type: string }
+        seq: { type: integer }
+        kind:
+          type: string
+          enum: [asset_gate, plan, gather, source_unavailable, gap_check,
+                 budget_exhausted, synthesise, claim_dropped, report]
+        reason: { type: string }
+        elapsed_seconds: { type: number }
+        executions:
+          type: array
+          items: { $ref: '#/components/schemas/ToolExecutionRecord' }
+        evidence_ids: { type: array, items: { type: string } }
+        gap:
+          type: object
+          additionalProperties: true

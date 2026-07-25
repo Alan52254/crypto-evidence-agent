@@ -37,6 +37,7 @@ def create_app(
 ) -> Starlette:
     event_broker = broker or RuntimeEventBroker()
     tasks: set[asyncio.Task[None]] = set()
+
     async def index(request: Request) -> Response:
         run_ids = await store.recent()
         if not run_ids:
@@ -121,6 +122,31 @@ def create_app(
         if outcome is None:
             return JSONResponse({"error": "not found", "run_id": run_id}, status_code=404)
         return JSONResponse(outcome_payload(outcome))
+
+    async def evidence_json(request: Request) -> Response:
+        run_id = request.path_params["run_id"]
+        outcome = await store.load(run_id)
+        if outcome is None or outcome.report is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        from hoyabit_agent.artifacts import evidence_list
+        return JSONResponse(evidence_list(outcome.report))
+
+    async def execution_log_endpoint(request: Request) -> Response:
+        run_id = request.path_params["run_id"]
+        outcome = await store.load(run_id)
+        if outcome is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        from hoyabit_agent.artifacts import execution_log_jsonl
+        return Response(execution_log_jsonl(outcome), media_type="application/x-ndjson")
+
+    async def manifest_endpoint(request: Request) -> Response:
+        run_id = request.path_params["run_id"]
+        outcome = await store.load(run_id)
+        if outcome is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        from hoyabit_agent.artifacts import output_manifest
+        return JSONResponse(output_manifest(outcome))
+
     return Starlette(
         routes=[
             Route("/", index),
@@ -129,6 +155,9 @@ def create_app(
             Route("/api/v1/analyse", start_analysis, methods=["POST"]),
             Route("/api/v1/stream_trace", stream_trace),
             Route("/api/v1/runs/{run_id}", run_api),
+            Route("/api/v1/runs/{run_id}/evidence", evidence_json),
+            Route("/api/v1/runs/{run_id}/logs", execution_log_endpoint),
+            Route("/api/v1/runs/{run_id}/manifest", manifest_endpoint),
         ]
     )
 
@@ -157,7 +186,7 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
 
     from hoyabit_agent.config import load_dotenv
     from hoyabit_agent.ingest.runtime import build_competition_sources
-    from hoyabit_agent.models.gemini import GeminiProvider
+    from hoyabit_agent.models.factory import create_model_provider
     from hoyabit_agent.run import analyse
     from hoyabit_agent.storage.postgres import PostgresAnalysisStore
 
@@ -177,9 +206,9 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
         import httpx
 
         async with httpx.AsyncClient(timeout=90.0) as client:
-            model = GeminiProvider.from_environment(client)
+            model = await create_model_provider(client)
             if model is None:
-                raise RuntimeError("GEMINI_API_KEY is not configured")
+                raise RuntimeError("No model provider configured (set GEMINI_API_KEY or GROQ_API_KEY)")
             sources = await build_competition_sources(client, model)
             return await analyse(
                 request, sources, model, run_id=run_id, on_trace=on_trace

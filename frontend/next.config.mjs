@@ -3,14 +3,7 @@ import { fileURLToPath } from "node:url";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: false,
-  async rewrites() {
-    return [
-      {
-        source: "/api/v1/:path*",
-        destination: "http://127.0.0.1:8000/api/v1/:path*",
-      },
-    ];
-  },
+  outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
 };
 
 export default nextConfig;

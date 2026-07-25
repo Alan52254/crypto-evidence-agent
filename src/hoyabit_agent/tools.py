@@ -118,7 +118,7 @@ def evidence_gap(
     minimum_per_facet: int = MINIMUM_EVIDENCE_PER_FACET,
     *,
     now: datetime | None = None,
-    max_age: timedelta = timedelta(days=7),
+    max_age: timedelta = timedelta(hours=24),
 ) -> EvidenceGap:
     """Return all quality gates that can justify another evidence-gathering round."""
     items = tuple(evidence)
@@ -193,16 +193,14 @@ def assess_confidence(
     evidence: Iterable[Evidence],
     minimum_facets: int = MINIMUM_FACETS_FOR_CONFIDENCE,
 ) -> ConfidenceResult:
-    """信心度 —— 證據面之間的一致程度（ADR 0002）。
+    """信心度 — 多維度加權評估（ADR 0002 + 競賽規格）。
 
-    輸入必須是**歸併後**的證據。
-
-    有兩種算不出來的情況，兩者都回傳 `InsufficientEvidence` 而非高信心度：
-
-    1. 蒐集到的證據面少於 `minimum_facets` —— 否則「只查到一則新聞 →
-       四面一致 → 高信心」這種荒謬結果會發生。
-    2. 面夠多但**表態的面**不足 —— 一致程度只在有方向的面之間才有意義。
-       三個面沉默、一個面看空，那不是「75% 共識」，那是沒有訊號。
+    權重分配：
+    - 來源品質 (independence): 25%
+    - 覆蓋 (coverage): 25%
+    - 時效 (freshness): 20%
+    - 一致性 (agreement): 20%
+    - 完整性 (completeness): 10%
     """
     items = tuple(evidence)
     stances = facet_stances(items)
@@ -228,10 +226,52 @@ def assess_confidence(
             facet_stances=stances,
         )
 
+    # 1. Agreement (一致性) — 20%
     counts = Counter(directional.values())
     agreement = counts.most_common(1)[0][1] / len(directional)
-    # 回報**所有**面的傾向（含中性），讀者才看得出誰沉默、誰表態。
-    return Confidence(value=agreement, facet_stances=dict(stances))
+
+    # 2. Coverage (覆蓋) — 25%: proportion of 4 facets that have evidence
+    coverage = len(present) / len(Facet)
+
+    # 3. Independence (來源品質) — 25%: number of distinct independent sources
+    sources = {
+        excerpt.source_id
+        for item in items
+        for excerpt in item.excerpts
+        if excerpt.source_id.strip()
+    }
+    # Cap at 4 sources for max score
+    independence = min(len(sources), 4) / 4
+
+    # 4. Freshness (時效) — 20%: based on most recent evidence timestamp
+    timestamps = [excerpt.retrieved_at for item in items for excerpt in item.excerpts]
+    if timestamps:
+        newest = max(timestamps)
+        age = datetime.now(UTC) - newest
+        # Fresh within 1 hour = 1.0, decays over 24 hours to 0.2
+        if age <= timedelta(hours=1):
+            freshness = 1.0
+        elif age <= timedelta(hours=24):
+            freshness = max(0.2, 1.0 - (age.total_seconds() / (24 * 3600)) * 0.8)
+        else:
+            freshness = 0.2
+    else:
+        freshness = 0.2
+
+    # 5. Completeness (完整性) — 10%: evidence count relative to minimum
+    total_evidence = len(items)
+    completeness = min(total_evidence, 8) / 8  # Cap at 8 items for full score
+
+    # Weighted combination
+    value = (
+        independence * 0.25
+        + coverage * 0.25
+        + freshness * 0.20
+        + agreement * 0.20
+        + completeness * 0.10
+    )
+
+    return Confidence(value=round(value, 4), facet_stances=dict(stances))
 
 
 def overall_stance(confidence: ConfidenceResult) -> Stance:

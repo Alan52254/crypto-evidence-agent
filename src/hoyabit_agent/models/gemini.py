@@ -88,12 +88,7 @@ class GeminiProvider:
             return None
         configured_model = os.environ.get(MODEL_ENV, DEFAULT_REASONING_MODEL).strip()
         configured_labour = os.environ.get(LABOUR_MODEL_ENV, DEFAULT_LABOUR_MODEL).strip()
-        if configured_model != DEFAULT_REASONING_MODEL or configured_labour != DEFAULT_LABOUR_MODEL:
-            raise ValueError(
-                f"formal inference requires {DEFAULT_REASONING_MODEL}; "
-                f"set {MODEL_ENV} and {LABOUR_MODEL_ENV} to that model"
-            )
-        return cls(client, api_key)
+        return cls(client, api_key, model=configured_model, labour_model=configured_labour)
 
     # -- 推理層 ---------------------------------------------------------
 

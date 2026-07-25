@@ -140,12 +140,18 @@ export function IntelligenceWorkspace() {
         source.close();
       });
 
-      // Handle native connection errors (backend unreachable, etc.)
+      // Handle native connection errors with reconnect
+      let reconnectAttempts = 0;
+      const maxReconnects = 3;
       source.onerror = () => {
         if (source.readyState === EventSource.CLOSED || reportRef.current) return;
-        setRunning(false);
-        setError("SSE 連線中斷，請確認後端服務正在運行。");
-        source.close();
+        reconnectAttempts++;
+        if (reconnectAttempts >= maxReconnects) {
+          setRunning(false);
+          setError("SSE 連線中斷且重試失敗，請確認後端服務正在運行。");
+          source.close();
+        }
+        // EventSource auto-reconnects by default unless we close it
       };
     } catch (err) {
       setRunning(false);

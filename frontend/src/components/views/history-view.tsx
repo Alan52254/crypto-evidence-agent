@@ -277,7 +277,7 @@ interface HistoryViewProps {
 export function HistoryView({ onLoadRun }: HistoryViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedModalItem, setSelectedModalItem] = useState<HistoryItem | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>(MOCK_HISTORY);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [backendConnected, setBackendConnected] = useState(false);
 

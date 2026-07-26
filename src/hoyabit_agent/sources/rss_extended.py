@@ -33,20 +33,14 @@ EXTENDED_FEEDS: tuple[tuple[str, str], ...] = (
 # 官方公告 — 每個幣種的第一手來源
 OFFICIAL_FEEDS: dict[Asset, tuple[tuple[str, str], ...]] = {
     Asset.BTC: (
-        ("coindesk-btc", "https://www.coindesk.com/arc/outboundfeeds/rss/category/markets/"),
+        ("coindesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
     ),
     Asset.ETH: (
         ("ethereum-blog", "https://blog.ethereum.org/feed.xml"),
     ),
-    Asset.SOL: (
-        ("solana-news", "https://solana.com/news/rss.xml"),
-    ),
-    Asset.BNB: (
-        ("binance-blog", "https://www.binance.com/en/feed/rss"),
-    ),
-    Asset.XRP: (
-        ("ripple-insights", "https://ripple.com/insights/feed/"),
-    ),
+    Asset.SOL: (),   # Solana 沒有公開 RSS feed，由 crypto_news 覆蓋
+    Asset.BNB: (),   # Binance 沒有公開 RSS feed，由 crypto_news 覆蓋
+    Asset.XRP: (),   # Ripple Insights 無 RSS feed，由 crypto_news 覆蓋
 }
 
 

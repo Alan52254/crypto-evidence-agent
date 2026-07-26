@@ -30,6 +30,57 @@ interface ChatThreadProps {
   onSelectPrompt?: (prompt: string, asset: Asset) => void;
 }
 
+/* ─────────────────────── Helpers ─────────────────────── */
+
+function markdownToHtml(md: string): string {
+  // Simple markdown to HTML converter (no external deps)
+  let html = md
+    // Headers
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    // Italic
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    // Code
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    // Images (SVG data URIs)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" />')
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    // Horizontal rule
+    .replace(/^---$/gm, "<hr />")
+    // Blockquote
+    .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
+    // Unordered list items
+    .replace(/^- (.+)$/gm, "<li>$1</li>")
+    // Table rows
+    .replace(/^\|(.+)\|$/gm, (match) => {
+      const cells = match.split("|").filter(Boolean).map((c) => c.trim());
+      if (cells.every((c) => /^[-:]+$/.test(c))) return ""; // separator row
+      const tag = cells.length > 0 ? "td" : "td";
+      return `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
+    });
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match}</ul>`);
+  // Wrap consecutive <tr> in <table>
+  html = html.replace(/(<tr>.*<\/tr>\n?)+/g, (match) => `<table>${match}</table>`);
+  // Paragraphs: wrap remaining lines
+  html = html
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return "";
+      if (trimmed.startsWith("<")) return trimmed;
+      return `<p>${trimmed}</p>`;
+    })
+    .join("\n");
+
+  return html;
+}
+
 /* ─────────────────────── Constants ─────────────────── */
 
 const PROMPT_SUGGESTIONS: { text: string; asset: Asset }[] = [
@@ -319,6 +370,33 @@ function ReportResponse({
             sources
           </p>
         </div>
+      )}
+
+      {/* Enhanced Report (Markdown with charts + investor insights) */}
+      {report.enhanced_report_md && (
+        <details className="border-t border-outline-variant pt-4 mt-4">
+          <summary className="cursor-pointer text-label-caps font-semibold text-primary hover:text-primary/80 transition-colors">
+            📊 展開完整增強報告（含圖表 + 投資者洞察 + 風險分析）
+          </summary>
+          <div
+            className="mt-3 prose prose-sm max-w-none text-on-surface-variant leading-relaxed 
+              [&_h1]:text-headline-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-6 [&_h1]:mb-3
+              [&_h2]:text-headline-md [&_h2]:font-bold [&_h2]:text-primary [&_h2]:mt-5 [&_h2]:mb-2
+              [&_h3]:text-body-lg [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-4 [&_h3]:mb-1
+              [&_table]:w-full [&_table]:text-[12px] [&_table]:border-collapse
+              [&_th]:border [&_th]:border-outline-variant [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold
+              [&_td]:border [&_td]:border-outline-variant [&_td]:px-3 [&_td]:py-1.5
+              [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1
+              [&_li]:text-body-md
+              [&_strong]:text-primary [&_strong]:font-semibold
+              [&_code]:bg-surface-container-low [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px] [&_code]:font-mono
+              [&_blockquote]:border-l-4 [&_blockquote]:border-l-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-secondary
+              [&_hr]:border-outline-variant [&_hr]:my-4
+              [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3
+              [&_p]:text-body-md [&_p]:leading-relaxed [&_p]:my-2"
+            dangerouslySetInnerHTML={{ __html: markdownToHtml(report.enhanced_report_md) }}
+          />
+        </details>
       )}
     </div>
   );

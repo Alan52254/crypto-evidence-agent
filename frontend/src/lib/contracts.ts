@@ -67,8 +67,10 @@ export interface AnalysisReport {
   question: string;
   stance: Stance;
   confidence: number | null;
+  confidence_cause?: string | null;
   cutoff: string;
   facet_stances: Partial<Record<Facet, Stance>>;
   claims: ReportClaim[];
   evidence: EvidenceRecord[];
+  enhanced_report_md?: string;
 }

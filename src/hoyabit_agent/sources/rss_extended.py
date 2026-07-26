@@ -33,7 +33,7 @@ EXTENDED_FEEDS: tuple[tuple[str, str], ...] = (
 # 官方公告 — 每個幣種的第一手來源
 OFFICIAL_FEEDS: dict[Asset, tuple[tuple[str, str], ...]] = {
     Asset.BTC: (
-        ("bitcoinmagazine", "https://bitcoinmagazine.com/feed"),
+        ("coindesk-btc", "https://www.coindesk.com/arc/outboundfeeds/rss/category/markets/"),
     ),
     Asset.ETH: (
         ("ethereum-blog", "https://blog.ethereum.org/feed.xml"),

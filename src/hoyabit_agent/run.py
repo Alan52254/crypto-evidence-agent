@@ -199,21 +199,21 @@ async def analyse(
     for _ in range(max_iterations):
         gap = evidence_gap(gathered)
         if not gap:
-            recorder.record(TraceNodeKind.GAP_CHECK, "四個證據面皆已達最低證據數", gap_before=gap)
+            recorder.record(TraceNodeKind.GAP_CHECK, "四個證據面皆已達最低證據數", gap_before=gap.missing_facets)
             break
 
         if recorder.elapsed >= budget_seconds:
             recorder.record(
                 TraceNodeKind.BUDGET_EXHAUSTED,
                 "時間預算耗盡，以現有證據組裝報告",
-                gap_before=gap,
-                gap_after=gap,
+                gap_before=gap.missing_facets,
+                gap_after=gap.missing_facets,
             )
             break
 
         context = GatherContext(
             asset=asset,
-            gap=gap,
+            gap=gap.missing_facets,
             evidence=gathered,
             attempts=attempts,
             question=request.question,
@@ -225,7 +225,7 @@ async def analyse(
             # 模型判定無需再蒐集。這不是一次規劃 —— PLAN 節點的語意是
             # 「決定去蒐集什麼」，婉拒屬於缺口檢查的結果。
             recorder.record(
-                TraceNodeKind.GAP_CHECK, decision.reason, gap_before=gap, gap_after=gap
+                TraceNodeKind.GAP_CHECK, decision.reason, gap_before=gap.missing_facets, gap_after=gap.missing_facets
             )
             break
 
@@ -241,8 +241,8 @@ async def analyse(
         recorder.record(
             TraceNodeKind.PLAN,
             decision.reason,
-            gap_before=gap,
-            gap_after=gap,
+            gap_before=gap.missing_facets,
+            gap_after=gap.missing_facets,
             executions=planned,
             detail={inv.tool: _describe(inv.arguments) for inv in decision.invocations},
         )
@@ -258,8 +258,8 @@ async def analyse(
                 recorder.record(
                     TraceNodeKind.SOURCE_UNAVAILABLE,
                     f"證據源 {invocation.tool} 暫時不可用，改由其他來源補足",
-                    gap_before=gap,
-                    gap_after=gap,
+                    gap_before=gap.missing_facets,
+                    gap_after=gap.missing_facets,
                     detail={invocation.tool: _describe(invocation.arguments)},
                 )
                 fresh_attempts.append(
@@ -290,8 +290,8 @@ async def analyse(
             TraceNodeKind.GATHER,
             f"自 {called} 蒐集到 {len(fresh)} 項證據",
             evidence_ids=tuple(item.id for item in fresh),
-            gap_before=gap,
-            gap_after=gap_after,
+            gap_before=gap.missing_facets,
+            gap_after=gap_after.missing_facets,
             executions=completed_records,
         )
 

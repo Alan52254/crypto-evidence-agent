@@ -28,16 +28,16 @@ async def create_model_provider(client: httpx.AsyncClient) -> "ModelProvider | N
     from hoyabit_agent.models.groq import GroqProvider
 
     if preferred == "groq":
-        provider = GroqProvider.from_environment(client)
-        if provider is not None:
-            return provider
+        groq_provider = GroqProvider.from_environment(client)
+        if groq_provider is not None:
+            return groq_provider
         # Fallback to Gemini
         return GeminiProvider.from_environment(client)
 
     if preferred == "gemini" or not preferred:
-        provider = GeminiProvider.from_environment(client)
-        if provider is not None:
-            return provider
+        gemini_provider = GeminiProvider.from_environment(client)
+        if gemini_provider is not None:
+            return gemini_provider
         # Fallback to Groq
         return GroqProvider.from_environment(client)
 

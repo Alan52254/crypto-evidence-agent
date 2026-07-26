@@ -9,8 +9,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, cast
 
 import httpx
 
@@ -64,6 +64,8 @@ class GroqProvider:
             {"role": "system", "content": PLAN_SYSTEM},
             {"role": "user", "content": plan_prompt(context)},
         ]
+        # Build a name→spec map so we can coerce argument types after parsing
+        spec_by_name = {spec.name: spec for spec in tools}
         groq_tools = [_to_openai_tool(spec) for spec in tools]
 
         body = await self._chat(messages, tools=groq_tools)
@@ -86,6 +88,11 @@ class GroqProvider:
             except json.JSONDecodeError:
                 args = {}
             if name:
+                # Coerce argument types to match the declared schema —
+                # Llama often emits integers as strings ("24" instead of 24).
+                spec = spec_by_name.get(name)
+                if spec is not None:
+                    args = _coerce_args(args, spec.parameters)
                 invocations.append(ToolInvocation(tool=name, arguments=args))
 
         reason = message.get("content", "") or "（Groq 未說明理由）"
@@ -196,6 +203,15 @@ class GroqProvider:
             payload["tool_choice"] = "auto"
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+            # Groq requires the word 'json' to appear in messages when using json_object mode
+            has_json_word = any("json" in str(m.get("content", "")).lower() for m in messages)
+            if not has_json_word:
+                # Append instruction to the last user message
+                messages = list(messages)  # don't mutate caller's list
+                messages[-1] = {
+                    **messages[-1],
+                    "content": messages[-1].get("content", "") + "\n\nRespond in valid JSON format.",
+                }
 
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -216,7 +232,10 @@ class GroqProvider:
 
             if response.status_code == 200:
                 try:
-                    return response.json()
+                    res_data = response.json()
+                    if isinstance(res_data, dict):
+                        return cast(dict[str, Any], res_data)
+                    return None
                 except ValueError:
                     return None
             if response.status_code == 400:
@@ -240,25 +259,93 @@ class GroqProvider:
         return None
 
 
+def _coerce_args(args: dict[str, Any], schema: Mapping[str, Any]) -> dict[str, Any]:
+    """Coerce tool call argument types to match the declared JSON Schema.
+
+    Llama models frequently emit integer/number values as strings even when
+    the schema declares them as 'integer' or 'number'. This causes a Groq
+    400 error because Groq validates argument types server-side.
+
+    We walk the schema's 'properties' and cast each value to the declared
+    Python type. Unknown keys are left as-is; conversion failures fall back
+    to the original value.
+    """
+    properties: dict[str, Any] = schema.get("properties", {}) or {}
+    if not properties or not isinstance(args, dict):
+        return args
+
+    coerced = dict(args)
+    for key, prop in properties.items():
+        if key not in coerced:
+            continue
+        declared_type = prop.get("type", "")
+        value = coerced[key]
+        try:
+            if declared_type == "integer":
+                if not isinstance(value, int) or isinstance(value, bool):
+                    coerced[key] = int(float(value))  # "24" → 24, "3.0" → 3
+            elif declared_type == "number":
+                if not isinstance(value, (int, float)) or isinstance(value, bool):
+                    coerced[key] = float(value)
+            elif declared_type == "boolean":
+                if not isinstance(value, bool):
+                    coerced[key] = str(value).lower() in ("true", "1", "yes")
+        except (TypeError, ValueError):
+            pass  # Leave the original value; bounded_int/choice will handle it
+    return coerced
+
+
+def _clean_property(prop: dict[str, Any]) -> dict[str, Any]:
+    """Strip JSON Schema keywords that Groq/Llama rejects.
+
+    Groq's tool parameter schema only supports: type, description, enum,
+    properties, required, items. Keywords like minimum/maximum/exclusiveMinimum
+    cause a 400 from Groq's validator.
+    """
+    # Keywords supported by Groq's function-calling schema validator
+    GROQ_ALLOWED = {"type", "description", "enum", "properties", "required", "items"}
+    cleaned = {k: v for k, v in prop.items() if k in GROQ_ALLOWED}
+    # Recursively clean nested properties
+    if "properties" in cleaned:
+        cleaned["properties"] = {
+            k: _clean_property(v) for k, v in cleaned["properties"].items()
+        }
+    return cleaned
+
+
 def _to_openai_tool(spec: ToolSpec) -> dict[str, Any]:
-    """Convert ToolSpec to OpenAI function calling format (Groq-compatible)."""
-    parameters = dict(spec.parameters)
-    properties = dict(parameters.get("properties", {}) or {})
-    properties.setdefault("asset", {
+    """Convert ToolSpec to OpenAI function calling format (Groq-compatible).
+
+    Key constraints for Groq/Llama:
+    - Parameter schema must NOT contain: minimum, maximum, exclusiveMinimum,
+      exclusiveMaximum, multipleOf, pattern, etc. Only type/description/enum
+      /properties/required/items are accepted.
+    - Every required field listed in 'required' must exist in 'properties'.
+    """
+    raw_params = dict(spec.parameters)
+    raw_props = dict(raw_params.get("properties", {}) or {})
+
+    # Ensure 'asset' field is present so Groq knows which coin to look up
+    raw_props.setdefault("asset", {
         "type": "string",
         "enum": ["BTC", "ETH", "SOL", "BNB", "XRP"],
-        "description": "Target asset",
+        "description": "Target cryptocurrency asset",
     })
-    parameters["properties"] = properties
-    # Groq requires 'type' and 'required' in parameters
-    parameters.setdefault("type", "object")
-    if "required" not in parameters:
-        parameters["required"] = ["asset"]
-    elif "asset" not in parameters["required"]:
-        parameters["required"] = list(parameters["required"]) + ["asset"]
-    # Remove any non-standard fields that Groq doesn't accept
-    allowed_keys = {"type", "properties", "required", "description"}
-    parameters = {k: v for k, v in parameters.items() if k in allowed_keys}
+
+    # Strip unsupported JSON Schema keywords from every property
+    clean_props = {k: _clean_property(v) for k, v in raw_props.items()}
+
+    # Build the final parameters object with only Groq-supported top-level keys
+    required = list(raw_params.get("required", []) or [])
+    if "asset" not in required:
+        required = ["asset"] + required
+
+    parameters = {
+        "type": "object",
+        "properties": clean_props,
+        "required": required,
+    }
+
     return {
         "type": "function",
         "function": {

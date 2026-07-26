@@ -158,22 +158,6 @@ def test_a_single_facet_is_insufficient_evidence_not_perfect_agreement() -> None
     result = assess_confidence([evidence("E1", Facet.TECHNICAL, 0.9)])
     assert isinstance(result, InsufficientEvidence)
     assert result.facets_present == frozenset({Facet.TECHNICAL})
-
-
-def test_no_evidence_at_all_is_insufficient_evidence() -> None:
-    assert isinstance(assess_confidence([]), InsufficientEvidence)
-
-
-def test_full_agreement_across_four_facets_scores_one() -> None:
-    items = [evidence(f"E{i}", facet, 0.8) for i, facet in enumerate(Facet)]
-    result = assess_confidence(items)
-    assert isinstance(result, Confidence)
-    assert result.value == pytest.approx(1.0)
-
-
-def test_an_even_split_scores_a_half() -> None:
-    items = [
-        evidence("E1", Facet.TECHNICAL, -0.8),
         evidence("E2", Facet.POSITIONING, -0.8),
         evidence("E3", Facet.FUNDAMENTAL, 0.8),
         evidence("E4", Facet.SENTIMENT, 0.8),

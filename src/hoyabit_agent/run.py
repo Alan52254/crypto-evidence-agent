@@ -217,6 +217,7 @@ async def analyse(
             evidence=gathered,
             attempts=attempts,
             question=request.question,
+            gap_state=gap,
         )
         decision = await model.plan(context, tools)
 

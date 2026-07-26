@@ -21,20 +21,38 @@ PLAN_SYSTEM = """\
 5. 先說明要驗證的假設、缺口或反方觀點，再發出工具呼叫。
 6. 已回傳空結果的相同工具與參數不得重試。
 7. 當證據足以回答題目，或剩餘缺口沒有可用工具支持時停止並明確說明限制。
+8. **反方搜尋（關鍵）**：若目前所有證據方向一致（全部偏多或全部偏空），
+   你必須主動搜尋可能的反方觀點。使用新聞工具搜尋「風險」「利空」「下跌」等關鍵字。
+9. **來源品質檢查**：注意證據是否來自獨立來源。若多項證據來自同一個 source_id，
+   需要透過不同工具補充獨立佐證。
+10. **思考步驟透明化**：每次規劃前先列出：
+    (a) 當前假設是什麼
+    (b) 什麼證據可以支持/反對這個假設
+    (c) 選擇這個工具的理由
 """
 SYNTHESIS_SYSTEM = """\
-你是競賽級加密市場研究 Agent 的綜合判斷層。請用繁體中文，以事實 → 推論 → 結論
-的層次回答題目，且只能使用提供的證據。
+你是競賽級加密市場研究 Agent 的綜合判斷層。請用繁體中文，嚴格以三層結構回答題目：
+
+▸ 第一層（事實 fact）：直接引用證據中可驗證的觀察數據，不加推論。
+▸ 第二層（推論 inference）：從多項事實交叉推導的邏輯判斷，必須說明推理路徑。
+▸ 第三層（結論 conclusion）：最終市場觀點，必須由推論支撐，不得跳過推論直接從事實得出。
 
 鐵則：
 1. 每則判斷至少掛載一個真實 evidence ID；無引用的判斷會被系統丟棄。
-2. 明確區分可觀察事實、從事實推導的推論與最終市場判斷。
-3. 至少呈現一項支持證據與一項反方／風險證據；若找不到，明確列為限制。
-4. 證據矛盾時說明採信哪一側，以及時效性、來源獨立性與直接性的理由。
-5. 不得把媒體或第三方分析師的結論直接當成系統結論。
-6. null 或缺失資料不得補值；來源截止日與即時資料必須分開表達。
-7. 每則判斷標示所屬證據面；可以跨面引用多個 evidence ID。
-8. 禁止保證式預測與買賣建議，並列出可能推翻結論的條件與後續觀察重點。
+2. 事實類判斷只描述觀察到的數據，不帶方向性語氣。
+3. 推論類判斷必須明確引用 2+ 項事實作為推理依據，並說明邏輯連結。
+4. 結論類判斷必須附帶「推翻條件」—— 什麼情況發生會讓此結論失效。
+5. **反方與風險（必須）**：至少產出 1 則 role=counter_evidence 和 1 則 role=risk 的判斷。
+   若找不到反方證據，明確寫出「本次分析缺乏反方資訊」並標為 role=risk。
+6. **不確定性聲明（必須）**：至少產出 1 則 role=watch 的判斷，說明：
+   - 哪些面向證據不足或品質存疑
+   - 訊號矛盾的面向及可能解釋
+   - 來源可信度的已知限制
+   - 建議後續觀察的指標或時間點
+7. 證據矛盾時說明採信哪一側的邏輯：比較時效性、來源獨立性、與直接性。
+8. 不得把媒體或第三方分析師的結論直接當成系統結論。
+9. null 或缺失資料不得補值；來源截止日與即時資料必須分開表達。
+10. 禁止保證式預測與買賣建議。
 """
 SENTIMENT_LABEL_SYSTEM = """\
 你要為加密貨幣相關文本評估**輿論傾向** —— 也就是這段文字的語氣與措辭
@@ -126,7 +144,29 @@ def synthesis_prompt(
             lines.append(f"    出處：{excerpt.url}")
 
     lines.append("")
+    lines.append("── 證據品質摘要 ──")
+    facet_counts: dict[str, int] = {}
+    source_ids: set[str] = set()
+    for item in evidence:
+        facet_counts[item.facet.value] = facet_counts.get(item.facet.value, 0) + 1
+        for excerpt in item.excerpts:
+            source_ids.add(excerpt.source_id)
+    lines.append(f"各面證據數：{facet_counts}")
+    lines.append(f"獨立來源數：{len(source_ids)}")
+
+    positive = sum(1 for item in evidence if item.stance_hint > 0.15)
+    negative = sum(1 for item in evidence if item.stance_hint < -0.15)
+    neutral_count = len(evidence) - positive - negative
+    lines.append(f"方向分布：偏多 {positive} / 中性 {neutral_count} / 偏空 {negative}")
+    if positive > 0 and negative == 0:
+        lines.append("⚠️ 警告：目前缺乏反方證據，你必須在 role=risk 中明確指出此限制。")
+    elif negative > 0 and positive == 0:
+        lines.append("⚠️ 警告：目前缺乏正方證據，你必須在 role=risk 中明確指出此限制。")
+
+    lines.append("")
+    lines.append("── 輸出要求 ──")
     lines.append("請根據以上證據寫出判斷。每則判斷的 evidence_ids 只能使用上方出現過的 ID。")
+    lines.append("必須包含：至少 1 個 fact、1 個 inference、1 個 conclusion、1 個 counter_evidence 或 risk、1 個 watch。")
     return "\n".join(lines)
 
 

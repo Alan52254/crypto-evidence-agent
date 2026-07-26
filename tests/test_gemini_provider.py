@@ -84,14 +84,23 @@ async def test_a_blank_api_key_counts_as_absent(monkeypatch: pytest.MonkeyPatch)
         assert GeminiProvider.from_environment(client) is None
 
 
-async def test_environment_rejects_a_non_architectural_model(
+async def test_environment_honours_a_configured_reasoning_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """模型名稱由環境決定，不硬驗證。
+
+    刻意不拋例外：供應商隨時可能改名或下架某個版本，讓建構函式因為
+    名稱不在白名單就中斷，等於把「現場臨時換模型」這條退路封死。
+    """
     monkeypatch.setenv(API_KEY_ENV, "k")
     monkeypatch.setenv(MODEL_ENV, "gemini-3-pro")
-    async with responding({}) as client:
-        with pytest.raises(ValueError, match="gemini-3.6-flash"):
-            GeminiProvider.from_environment(client)
+    captured: list[httpx.Request] = []
+    async with responding(gemini_reply({"text": "ok"}), capture=captured) as client:
+        provider = GeminiProvider.from_environment(client)
+        assert provider is not None
+        await provider.plan(context(), (SPEC,))
+
+    assert "gemini-3-pro:generateContent" in str(captured[0].url)
 
 
 async def test_the_two_tiers_use_two_different_models() -> None:
@@ -116,15 +125,20 @@ async def test_planning_uses_the_reasoning_tier() -> None:
     assert "reasoning-model:generateContent" in str(captured[0].url)
 
 
-async def test_environment_rejects_a_separate_labour_model(
+async def test_environment_honours_a_separate_labour_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """勞務層可獨立設定 —— 決策 #6 的兩層分工由環境變數兌現。"""
     monkeypatch.setenv(API_KEY_ENV, "k")
     monkeypatch.setenv(MODEL_ENV, "gemini-3.6-flash")
     monkeypatch.setenv(LABOUR_MODEL_ENV, "small")
-    async with responding({}) as client:
-        with pytest.raises(ValueError, match="gemini-3.6-flash"):
-            GeminiProvider.from_environment(client)
+    captured: list[httpx.Request] = []
+    async with responding(json_reply({"scores": [0.0]}), capture=captured) as client:
+        provider = GeminiProvider.from_environment(client)
+        assert provider is not None
+        await provider.label(["a"])
+
+    assert "small:generateContent" in str(captured[0].url)
 
 
 async def test_a_hanging_model_times_out_instead_of_blowing_the_budget() -> None:

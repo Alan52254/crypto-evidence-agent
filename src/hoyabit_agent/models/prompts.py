@@ -92,6 +92,19 @@ def plan_prompt(context: GatherContext) -> str:
     """把當下的蒐集狀態寫成給模型的敘述。"""
     lines = [f"分析標的：{context.asset.value}", f"分析題目：{context.question}", ""]
 
+    # 題型需求先講 —— 它決定「什麼算蒐集完成」，是這一輪規劃的框架。
+    if context.requirement_brief:
+        lines.append("── 本題的證據需求 ──")
+        lines.append(context.requirement_brief)
+        lines.append("")
+
+    if context.gap_brief:
+        lines.append("── 目前的證據缺口（由系統規則判定，非你自行判斷）──")
+        lines.append(context.gap_brief)
+        lines.append("")
+        lines.append("標示「必補」的缺口未關閉前，蒐集迴圈不會結束。請針對它們選擇工具。")
+        lines.append("")
+
     gap = "、".join(sorted(facet.value for facet in context.gap)) or "無"
     lines.append(f"目前仍有缺口的證據面：{gap}")
     if context.gap_state is not None:
@@ -166,7 +179,10 @@ def synthesis_prompt(
     lines.append("")
     lines.append("── 輸出要求 ──")
     lines.append("請根據以上證據寫出判斷。每則判斷的 evidence_ids 只能使用上方出現過的 ID。")
-    lines.append("必須包含：至少 1 個 fact、1 個 inference、1 個 conclusion、1 個 counter_evidence 或 risk、1 個 watch。")
+    lines.append(
+        "必須包含：至少 1 個 fact、1 個 inference、1 個 conclusion、"
+        "1 個 counter_evidence 或 risk、1 個 watch。"
+    )
     return "\n".join(lines)
 
 

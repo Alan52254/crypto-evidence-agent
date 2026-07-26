@@ -13,10 +13,14 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 
+from hoyabit_agent import gaps as gap_rules
+from hoyabit_agent.claim_ledger import LedgerResult, coverage_ratio, verify
 from hoyabit_agent.domain import (
     AnalysisOutcome,
     AnalysisRequest,
     Asset,
+    Claim,
+    ClaimRole,
     DraftClaim,
     Evidence,
     Facet,
@@ -28,12 +32,14 @@ from hoyabit_agent.domain import (
     TraceNode,
     TraceNodeKind,
 )
+from hoyabit_agent.question import EvidenceRequirement, derive_requirement, mentioned_assets
 from hoyabit_agent.seams import (
     Arguments,
     Clock,
     EvidenceSource,
     GatherContext,
     ModelProvider,
+    PlanDecision,
     Sources,
     ToolAttempt,
     ToolInvocation,
@@ -41,7 +47,6 @@ from hoyabit_agent.seams import (
 )
 from hoyabit_agent.tools import (
     assess_confidence,
-    check_citations,
     evidence_gap,
     gate_asset,
     merge_independent_evidence,
@@ -51,6 +56,12 @@ from hoyabit_agent.tools import (
 DEFAULT_BUDGET_SECONDS = 900.0  # 15 分鐘 —— 上限，不是目標
 DEFAULT_IO_TIMEOUT_SECONDS = 15.0
 DEFAULT_MAX_ITERATIONS = 6
+ASSEMBLY_RESERVE_SECONDS = 120.0
+"""保留給撰寫、驗證與組裝的時間。
+
+蒐集迴圈不得跑到預算的最後一秒 —— 那會讓 synthesise 沒有時間跑完，
+結果是「蒐集了一堆證據但沒有報告」，比少蒐集兩輪糟糕得多。
+"""
 
 
 class _SystemClock:
@@ -104,7 +115,10 @@ class _TraceRecorder:
         if executions:
             details = [f"{e.tool}({e.arguments}) -> {e.status.value}" for e in executions]
             exec_info = f" | Executions: [{', '.join(details)}]"
-        logger.info(f"🤖 [Agent Step: {kind.value.upper()}] (Elapsed: {self.elapsed:.2f}s) - {reason}{exec_info}")
+        logger.info(
+            f"[Agent Step: {kind.value.upper()}] "
+            f"(Elapsed: {self.elapsed:.2f}s) - {reason}{exec_info}"
+        )
 
         if self._on_trace is not None:
             self._on_trace(node)
@@ -187,6 +201,17 @@ async def analyse(
 
     recorder.record(TraceNodeKind.ASSET_GATE, f"{asset.value} 為受涵蓋幣種，進入分析")
 
+    # 題型分類 —— 決定「這一題需要什麼證據」。確定性判斷，不押在模型回應上。
+    involved = mentioned_assets(request.question, asset)
+    requirement: EvidenceRequirement = derive_requirement(request.question, involved)
+    recorder.record(
+        TraceNodeKind.GAP_CHECK,
+        f"題型判定：{requirement.question_type.value}\n{requirement.describe()}",
+    )
+
+    # 蒐集迴圈的硬截止 —— 保留組裝時間，見 ASSEMBLY_RESERVE_SECONDS。
+    gather_deadline = max(budget_seconds - ASSEMBLY_RESERVE_SECONDS, budget_seconds * 0.5)
+
     gathered: tuple[Evidence, ...] = ()
     attempts: tuple[ToolAttempt, ...] = ()
     # 工具名稱只有 `spec.name` 一個來源 —— 模型看到的、MCP 暴露的、
@@ -196,36 +221,80 @@ async def analyse(
         registry[name].spec for name in sorted(registry)
     )
 
+    assessment = gap_rules.assess(gathered, requirement)
+    used_fallback_plan = False
     for _ in range(max_iterations):
         gap = evidence_gap(gathered)
-        if not gap:
-            recorder.record(TraceNodeKind.GAP_CHECK, "四個證據面皆已達最低證據數", gap_before=gap.missing_facets)
+        assessment = gap_rules.assess(gathered, requirement)
+        if not assessment:
+            # 收斂由**題型規則**判定，不是模型說夠了就停。
+            recorder.record(
+                TraceNodeKind.GAP_CHECK,
+                f"題型 {requirement.question_type.value} 的所有必補缺口已關閉\n"
+                f"{assessment.describe()}",
+                gap_before=assessment.missing_facets,
+            )
             break
 
-        if recorder.elapsed >= budget_seconds:
+        if recorder.elapsed >= gather_deadline:
             recorder.record(
                 TraceNodeKind.BUDGET_EXHAUSTED,
-                "時間預算耗盡，以現有證據組裝報告",
-                gap_before=gap.missing_facets,
-                gap_after=gap.missing_facets,
+                f"蒐集時間預算耗盡（保留 {ASSEMBLY_RESERVE_SECONDS:.0f} 秒組裝），"
+                f"以現有證據組裝報告。未關閉的缺口："
+                f"{', '.join(g.kind for g in assessment.blocking_gaps) or '無'}",
+                gap_before=assessment.missing_facets,
+                gap_after=assessment.missing_facets,
             )
             break
 
         context = GatherContext(
             asset=asset,
-            gap=gap.missing_facets,
+            gap=assessment.missing_facets,
             evidence=gathered,
             attempts=attempts,
             question=request.question,
             gap_state=gap,
+            requirement_brief=requirement.describe(),
+            gap_brief=assessment.describe(),
         )
         decision = await model.plan(context, tools)
 
+        if not decision.invocations and not gathered and not used_fallback_plan:
+            # 規劃層不可用（額度用罄、逾時）且**還沒蒐集到任何證據**。
+            # 此時直接收斂會產出空報告，但證據源本身是健康的，而且
+            # 「有哪些工具、要分析哪個標的」都是已知的 —— 不需要模型也能
+            # 組出一個合理的基線計畫。
+            #
+            # 只在第一輪動用一次：它是保底，不是常態路徑。後續輪次若模型
+            # 仍不回應，那代表推理能力確實不可用，應該帶著限制收斂。
+            used_fallback_plan = True
+            decision = PlanDecision(
+                invocations=_fallback_plan(tools, asset),
+                reason=(
+                    f"規劃層未回應（{decision.reason}）。"
+                    "改用保底檢索計畫：對所有可用證據源各取一次預設參數，"
+                    "以免在證據源健康的情況下產出空報告。"
+                ),
+            )
+            # 不在這裡記軌跡 —— 下游的 PLAN 節點會帶著這個 reason 與
+            # 實際排定的工具一起記錄，重複記會讓軌跡讀者以為跑了兩輪。
+
         if not decision.invocations:
-            # 模型判定無需再蒐集。這不是一次規劃 —— PLAN 節點的語意是
-            # 「決定去蒐集什麼」，婉拒屬於缺口檢查的結果。
+            # 模型婉拒再蒐集。**模型的婉拒不等於缺口已關閉** —— 若規則仍判定
+            # 有必補缺口，那個事實必須留在軌跡上並進入報告的限制說明，
+            # 而不是被模型的一句「夠了」蓋過去。
+            outstanding = ", ".join(g.kind for g in assessment.blocking_gaps)
+            note = (
+                f"{decision.reason}\n"
+                f"（規則判定仍有未關閉的必補缺口：{outstanding}，將列為報告限制）"
+                if outstanding
+                else decision.reason
+            )
             recorder.record(
-                TraceNodeKind.GAP_CHECK, decision.reason, gap_before=gap.missing_facets, gap_after=gap.missing_facets
+                TraceNodeKind.GAP_CHECK,
+                note,
+                gap_before=assessment.missing_facets,
+                gap_after=assessment.missing_facets,
             )
             break
 
@@ -301,6 +370,7 @@ async def analyse(
         await model.synthesise(asset, gathered, request.question),
         recorder,
         request.question,
+        assessment,
     )
     return AnalysisOutcome(
         run_id=identifier,
@@ -310,22 +380,141 @@ async def analyse(
     )
 
 
+def _fallback_plan(tools: tuple[ToolSpec, ...], asset: Asset) -> tuple[ToolInvocation, ...]:
+    """保底檢索計畫 —— 規劃層不可用時的確定性替代。
+
+    只帶 `asset`，其餘參數交給各證據源的預設值。這是刻意的：
+    每個證據源已經對自己的參數有合理預設（見各 `fetch` 的 `bounded_int`），
+    在這裡猜參數只會把猜錯的責任從模型移到我們身上。
+    """
+    return tuple(
+        ToolInvocation(tool=spec.name, arguments={"asset": asset.value}) for spec in tools
+    )
+
+
+def _fallback_facts(gathered: tuple[Evidence, ...]) -> tuple[DraftClaim, ...]:
+    """把證據摘要直接轉成事實層判斷 —— 推理層不可用時的降級路徑。
+
+    每則判斷只引用產生它的那一項證據，因此必然通過引用檢核：
+    這裡沒有任何推論，只有「我們觀察到了什麼」。
+
+    刻意附一則 `WATCH` 判斷說明降級本身 —— 讀者必須看得出這份報告
+    為什麼沒有結論，否則「沒有結論」會被誤讀成「市場沒有方向」。
+    """
+    facts = [
+        DraftClaim(
+            text=item.summary,
+            evidence_ids=(item.id,),
+            facet=item.facet,
+            role=ClaimRole.FACT,
+        )
+        for item in gathered
+    ]
+    if facts:
+        facts.append(
+            DraftClaim(
+                text=(
+                    "推理層在本次回合中無法回應（額度用罄或逾時），"
+                    "因此報告僅呈現已取得的觀察事實，未產出推論與結論。"
+                    "方向與信心度不可據此解讀為市場中性。"
+                ),
+                evidence_ids=(gathered[0].id,),
+                facet=gathered[0].facet,
+                role=ClaimRole.WATCH,
+            )
+        )
+    return tuple(facts)
+
+
 def _assemble(
     asset: Asset,
     gathered: tuple[Evidence, ...],
     drafts: tuple[DraftClaim, ...],
     recorder: _TraceRecorder,
     question: str = "請分析當前市場狀況",
+    assessment: gap_rules.GapAssessment | None = None,
 ) -> Report:
-    """組裝階段 —— 對結構化判斷陣列過濾，過濾後才渲染。"""
+    """組裝階段 —— 判斷先經帳本驗證，再渲染。
+
+    驗證與撰寫刻意由不同階段執行：撰寫者是模型，驗證者是確定性規則。
+    同一次模型呼叫既下判斷又自我驗證，等於讓被告當法官。
+    """
     recorder.record(TraceNodeKind.SYNTHESISE, f"推理層產出 {len(drafts)} 則待檢核判斷")
 
-    kept, dropped = check_citations(drafts, gathered)
-    for draft in dropped:
+    if not drafts and gathered:
+        # 推理層不可用（額度用罄、逾時、格式不符）但證據已在手。
+        # 「有 N 項證據卻零則判斷」的報告對讀者毫無用處，也違反
+        # 「永不因逾時而失敗」的精神 —— 那條不變式的實質是
+        # **總是以現有證據交付可讀的東西**。
+        #
+        # 只補事實層：事實層判斷本質上是證據摘要的複述，確定性可得，
+        # 不需要模型。推論與結論刻意不補 —— 那才是真正需要推理的部分，
+        # 憑空生成會變成沒有依據的方向性判斷。
+        drafts = _fallback_facts(gathered)
+        recorder.record(
+            TraceNodeKind.SYNTHESISE,
+            f"推理層未回應，改以現有證據組出 {len(drafts)} 則事實層判斷。"
+            "本次報告不含推論與結論，方向判定不可用 —— 已列為限制。",
+        )
+
+    ledger: LedgerResult = verify(drafts, gathered)
+
+    for claim in ledger.unsupported:
         recorder.record(
             TraceNodeKind.CLAIM_DROPPED,
-            f"判斷未掛載有效證據，已丟棄：{draft.text}",
+            f"判斷未通過引用驗證，轉為限制說明：{claim.text}"
+            f"（{'；'.join(claim.reasons)}）",
         )
+    # 爭議判斷刻意**不**記在 CLAIM_DROPPED —— 它們仍在報告裡。
+    # 把「移出報告」與「保留但標記」混成同一個節點種類，會讓軌跡讀者
+    # 無法分辨系統到底拒絕了什麼。
+    for claim in ledger.contested:
+        recorder.record(
+            TraceNodeKind.SYNTHESISE,
+            f"判斷支撐薄弱，保留於報告但標記爭議：{claim.text}"
+            f"（{'；'.join(claim.reasons)}）",
+        )
+
+    coverage = coverage_ratio(ledger)
+    recorder.record(
+        TraceNodeKind.SYNTHESISE,
+        f"帳本驗證完成：supported={len(ledger.supported)}、"
+        f"contested={len(ledger.contested)}、unsupported={len(ledger.unsupported)}；"
+        f"結論層證據覆蓋率 {coverage:.0%}",
+    )
+
+    # 未關閉的缺口與被拒絕的判斷一併成為限制說明 —— 命題要求明確指出限制，
+    # 而不是把不確定性藏起來。
+    limitations = list(ledger.limitations())
+    if assessment is not None:
+        limitations.extend(
+            f"未關閉的證據缺口：{gap.detail}" for gap in assessment.blocking_gaps
+        )
+    if limitations:
+        recorder.record(
+            TraceNodeKind.REPORT,
+            "報告限制說明：\n" + "\n".join(f"- {line}" for line in limitations),
+        )
+
+    # 通過驗證（含爭議）的判斷進報告；被拒絕的留在 dropped_claims 供軌跡呈現。
+    kept = tuple(
+        Claim(
+            text=claim.text,
+            evidence_ids=claim.evidence_ids,
+            facet=claim.facet,
+            role=claim.role,
+        )
+        for claim in ledger.admissible
+    )
+    dropped = tuple(
+        DraftClaim(
+            text=claim.text,
+            evidence_ids=claim.evidence_ids,
+            facet=claim.facet,
+            role=claim.role,
+        )
+        for claim in ledger.unsupported
+    )
 
     confidence = assess_confidence(gathered)
     stance = overall_stance(confidence)

@@ -233,15 +233,12 @@ def assess_confidence(
     # 2. Coverage (覆蓋) — 25%: proportion of 4 facets that have evidence
     coverage = len(present) / len(Facet)
 
-    # 3. Independence (來源品質) — 25%: number of distinct independent sources
-    sources = {
-        excerpt.source_id
-        for item in items
-        for excerpt in item.excerpts
-        if excerpt.source_id.strip()
-    }
-    # Cap at 4 sources for max score
-    independence = min(len(sources), 4) / 4
+    # 3. Independence (來源品質) — 25%
+    # 以可信度加權、且**同事件合併**的來源數。直接數 distinct source_id 會讓
+    # 「多找一家轉載」無成本地抬高信心度 —— 那正是 ADR 0002 要堵的漏洞。
+    from hoyabit_agent.reliability import weighted_source_count
+
+    independence = min(weighted_source_count(items), 4.0) / 4
 
     # 4. Freshness (時效) — 20%: based on most recent evidence timestamp
     timestamps = [excerpt.retrieved_at for item in items for excerpt in item.excerpts]

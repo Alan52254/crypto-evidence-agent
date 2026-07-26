@@ -79,6 +79,18 @@ class GatherContext:
     attempts: tuple[ToolAttempt, ...]
     question: str = "請分析當前市場狀況"
     gap_state: EvidenceGap | None = None
+    requirement_brief: str = ""
+    """題型與該題的證據需求敘述（由 `question.EvidenceRequirement.describe`）。
+
+    刻意是字串而非結構：它唯一的消費者是提示詞，而把 `EvidenceRequirement`
+    的型別耦合進這個介面會讓接縫依賴一個它不需要理解的概念。
+    """
+    gap_brief: str = ""
+    """題型導向的缺口敘述（由 `gaps.GapAssessment.describe`）。
+
+    與 `gap`／`gap_state` 並存而非取代：前兩者是通用的面向缺口，
+    這一項才帶得出「缺反方」「兩邊不對稱」這類題型專屬的缺口。
+    """
 
 
 @dataclass(frozen=True)

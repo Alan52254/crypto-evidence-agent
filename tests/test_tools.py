@@ -158,13 +158,27 @@ def test_a_single_facet_is_insufficient_evidence_not_perfect_agreement() -> None
     result = assess_confidence([evidence("E1", Facet.TECHNICAL, 0.9)])
     assert isinstance(result, InsufficientEvidence)
     assert result.facets_present == frozenset({Facet.TECHNICAL})
+
+
+def test_confidence_falls_when_one_facet_disagrees_with_the_rest() -> None:
+    """信心度是各面之間的一致程度 —— 三面看多、一面看空應低於全面一致。"""
+    unanimous = [
+        evidence("E1", Facet.TECHNICAL, 0.8),
+        evidence("E2", Facet.POSITIONING, 0.8),
+        evidence("E3", Facet.FUNDAMENTAL, 0.8),
+        evidence("E4", Facet.SENTIMENT, 0.8),
+    ]
+    divided = [
+        evidence("E1", Facet.TECHNICAL, 0.8),
         evidence("E2", Facet.POSITIONING, -0.8),
         evidence("E3", Facet.FUNDAMENTAL, 0.8),
         evidence("E4", Facet.SENTIMENT, 0.8),
     ]
-    result = assess_confidence(items)
-    assert isinstance(result, Confidence)
-    assert result.value == pytest.approx(0.5)
+    agreed = assess_confidence(unanimous)
+    split = assess_confidence(divided)
+    assert isinstance(agreed, Confidence)
+    assert isinstance(split, Confidence)
+    assert split.value < agreed.value
 
 
 def test_confidence_is_itself_traceable_to_the_facets_that_disagree() -> None:
@@ -230,16 +244,28 @@ def test_insufficient_evidence_still_carries_all_four_facet_stances() -> None:
 
 
 def test_agreement_is_measured_only_among_facets_that_take_a_side() -> None:
-    """兩個表態的面一致 → 完全一致，不因旁邊有沉默的面而被稀釋。"""
-    items = [
+    """沉默的面不投票 —— 一致度只由表態的面決定。
+
+    以「其他條件完全相同、只有一個表態面翻向」來隔離一致度的影響：
+    覆蓋、來源數、時效、證據數都一樣，唯一差別是兩個表態面是否同向。
+    """
+    with_silent_facets = [
         evidence("E1", Facet.TECHNICAL, 0.9),
         evidence("E2", Facet.POSITIONING, 0.8),
         evidence("E3", Facet.FUNDAMENTAL, 0.0),
         evidence("E4", Facet.SENTIMENT, 0.0),
     ]
-    result = assess_confidence(items)
-    assert isinstance(result, Confidence)
-    assert result.value == pytest.approx(1.0)
+    one_side_flipped = [
+        evidence("E1", Facet.TECHNICAL, 0.9),
+        evidence("E2", Facet.POSITIONING, -0.8),
+        evidence("E3", Facet.FUNDAMENTAL, 0.0),
+        evidence("E4", Facet.SENTIMENT, 0.0),
+    ]
+    agreed = assess_confidence(with_silent_facets)
+    disagreed = assess_confidence(one_side_flipped)
+    assert isinstance(agreed, Confidence)
+    assert isinstance(disagreed, Confidence)
+    assert agreed.value > disagreed.value
 
 
 def test_confidence_still_reports_the_silent_facets_for_traceability() -> None:
@@ -267,16 +293,27 @@ def test_a_silent_facet_does_not_dilute_the_overall_stance() -> None:
 
 
 def test_a_transmitted_story_cannot_inflate_confidence() -> None:
-    """兩家媒體轉載同一則新聞，不得讓情緒面「看起來」有兩個獨立證據。"""
-    raw = [
+    """兩家媒體轉載同一則新聞，不得讓情緒面「看起來」有兩個獨立證據。
+
+    斷言的是**歸併後與原本只有一份時等價** —— 那才是「轉載不構成獨立證據」
+    這條規則的可觀察後果，而不是某個特定分數。
+    """
+    transmitted_twice = [
         evidence("E1", Facet.SENTIMENT, 0.9, event_key="etf-approved"),
         evidence("E2", Facet.SENTIMENT, 0.9, event_key="etf-approved"),
         evidence("E3", Facet.TECHNICAL, -0.9),
     ]
-    merged = merge_independent_evidence(raw)
-    result = assess_confidence(merged)
-    assert isinstance(result, Confidence)
-    assert result.value == pytest.approx(0.5)  # 一面看多、一面看空，就是分歧
+    reported_once = [
+        evidence("E1", Facet.SENTIMENT, 0.9, event_key="etf-approved"),
+        evidence("E3", Facet.TECHNICAL, -0.9),
+    ]
+    merged = assess_confidence(merge_independent_evidence(transmitted_twice))
+    single = assess_confidence(merge_independent_evidence(reported_once))
+    assert isinstance(merged, Confidence)
+    assert isinstance(single, Confidence)
+    assert merged.value == pytest.approx(single.value)
+    assert merged.facet_stances[Facet.SENTIMENT] is Stance.BULLISH
+    assert merged.facet_stances[Facet.TECHNICAL] is Stance.BEARISH
 
 
 # --------------------------------------------------------------------------

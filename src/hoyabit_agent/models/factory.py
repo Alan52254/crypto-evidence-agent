@@ -26,23 +26,27 @@ async def create_model_provider(client: httpx.AsyncClient) -> "ModelProvider | N
 
     from hoyabit_agent.models.gemini import GeminiProvider
     from hoyabit_agent.models.groq import GroqProvider
+    from hoyabit_agent.models.resilience import ResilientModelAdapter
+
+    gemini_provider = GeminiProvider.from_environment(client)
+    groq_provider = GroqProvider.from_environment(client)
+
+    primary: ModelProvider | None
+    secondary: ModelProvider | None
 
     if preferred == "groq":
-        groq_provider = GroqProvider.from_environment(client)
-        if groq_provider is not None:
-            return groq_provider
-        # Fallback to Gemini
-        return GeminiProvider.from_environment(client)
+        primary = groq_provider
+        secondary = gemini_provider
+    else:
+        primary = gemini_provider
+        secondary = groq_provider
 
-    if preferred == "gemini" or not preferred:
-        gemini_provider = GeminiProvider.from_environment(client)
-        if gemini_provider is not None:
-            return gemini_provider
-        # Fallback to Groq
-        return GroqProvider.from_environment(client)
+    if primary is not None:
+        return ResilientModelAdapter(primary, secondary)
+    if secondary is not None:
+        return ResilientModelAdapter(secondary, None)
 
-    # Unknown provider name — try both
-    return GeminiProvider.from_environment(client) or GroqProvider.from_environment(client)
+    return None
 
 
 __all__ = ["PROVIDER_ENV", "create_model_provider"]

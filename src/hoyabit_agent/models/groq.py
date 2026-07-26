@@ -97,12 +97,22 @@ class GroqProvider:
         evidence: tuple[Evidence, ...],
         question: str = "請分析當前市場狀況",
     ) -> tuple[DraftClaim, ...]:
-        """從證據推出判斷。使用 JSON mode。"""
+        """從證據推出判斷。使用 JSON mode + schema 描述。"""
         if not evidence:
             return ()
 
+        from hoyabit_agent.models.schemas import CLAIMS_SCHEMA, describe_schema
+
+        schema_instruction = (
+            "\n\n你必須以下列 JSON 格式回應（不要加任何額外文字）：\n"
+            f"{describe_schema(CLAIMS_SCHEMA)}\n\n"
+            "facet 必須是: technical, positioning, fundamental, sentiment\n"
+            "role 必須是: fact, inference, conclusion, counter_evidence, risk, invalidation, watch\n"
+            "evidence_ids 必須是上方出現過的真實 ID（如 BNC-SPOT-BTC-4h-RSI14）"
+        )
+
         messages = [
-            {"role": "system", "content": SYNTHESIS_SYSTEM},
+            {"role": "system", "content": SYNTHESIS_SYSTEM + schema_instruction},
             {"role": "user", "content": synthesis_prompt(asset, evidence, question)},
         ]
 
@@ -114,7 +124,16 @@ class GroqProvider:
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            return ()
+            # Try to extract JSON from possible markdown wrapping
+            import re
+            match = re.search(r'\{[\s\S]*\}', content)
+            if match:
+                try:
+                    parsed = json.loads(match.group())
+                except json.JSONDecodeError:
+                    return ()
+            else:
+                return ()
 
         return _parse_claims(parsed)
 
@@ -123,11 +142,36 @@ class GroqProvider:
         texts: Sequence[str],
         aspect: LabelAspect = LabelAspect.SENTIMENT,
     ) -> tuple[float, ...]:
-        """批次打分 — Groq 版本。"""
+        """批次打分 — Groq 版本，使用 JSON mode。"""
         if not texts:
             return ()
-        # Simplified: return neutral scores. Full implementation would call Groq.
-        return tuple(0.0 for _ in texts)
+
+        from hoyabit_agent.models.prompts import LABEL_SYSTEM
+
+        listing = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+        messages = [
+            {"role": "system", "content": LABEL_SYSTEM[aspect] + '\n\n回傳格式：{"scores": [0.3, -0.2, ...]}，數量必須與輸入相同。'},
+            {"role": "user", "content": f"共 {len(texts)} 則文本：\n\n{listing}"},
+        ]
+
+        body = await self._chat(messages, json_mode=True)
+        if body is None:
+            return tuple(0.0 for _ in texts)
+
+        content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            return tuple(0.0 for _ in texts)
+
+        scores = parsed.get("scores", [])
+        if not isinstance(scores, list) or len(scores) != len(texts):
+            return tuple(0.0 for _ in texts)
+
+        try:
+            return tuple(max(-1.0, min(1.0, float(s))) for s in scores)
+        except (TypeError, ValueError):
+            return tuple(0.0 for _ in texts)
 
     async def _chat(
         self,

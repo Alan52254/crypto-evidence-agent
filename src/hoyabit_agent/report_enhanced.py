@@ -1,0 +1,247 @@
+"""增強版報告產生器 — 在標準報告基礎上加入圖表與投資者關注議題。
+
+標準 Report.to_markdown() 產出純文字報告；本模組在其之上加入：
+1. K 線圖 / 價格走勢 / RSI / 成交量的 SVG 圖表
+2. 投資者常見關注議題段落（風險管理、進出場建議觀察點）
+3. 結構化摘要（一眼看重點）
+"""
+
+from __future__ import annotations
+
+from hoyabit_agent.charts import ChartData, OHLCV, charts_to_markdown
+from hoyabit_agent.domain import (
+    AnalysisOutcome,
+    ClaimRole,
+    Confidence,
+    Evidence,
+    Facet,
+    InsufficientEvidence,
+    Report,
+    Stance,
+)
+
+
+def enhanced_report_markdown(outcome: AnalysisOutcome, chart_data: ChartData | None = None) -> str:
+    """產出包含圖表與投資者洞察的完整報告 Markdown。"""
+    report = outcome.report
+    if report is None:
+        return "# 分析未完成\n\n幣種不在受涵蓋範圍內或分析被拒絕。"
+
+    sections: list[str] = []
+
+    # ─── Executive Summary (一眼看重點) ───
+    sections.append(_executive_summary(report))
+
+    # ─── 圖表區 ───
+    if chart_data and chart_data.candles:
+        sections.append(charts_to_markdown(chart_data))
+
+    # ─── 核心判斷 (按層次排列) ───
+    sections.append(_layered_claims(report))
+
+    # ─── 風險與不確定性 ───
+    sections.append(_risk_section(report))
+
+    # ─── 投資者關注議題 ───
+    sections.append(_investor_insights(report))
+
+    # ─── 證據溯源表 ───
+    sections.append(_evidence_table(report))
+
+    # ─── 方法論與限制 ───
+    sections.append(_methodology(report, outcome))
+
+    return "\n\n".join(sections)
+
+
+def _executive_summary(report: Report) -> str:
+    """一眼看重點的結構化摘要。"""
+    stance_emoji = {"bullish": "📈", "bearish": "📉", "neutral": "➖"}
+    stance_zh = {"bullish": "偏多", "bearish": "偏空", "neutral": "中性"}
+
+    emoji = stance_emoji.get(report.stance.value, "➖")
+    direction = stance_zh.get(report.stance.value, "中性")
+
+    confidence_str = ""
+    if isinstance(report.confidence, Confidence):
+        pct = round(report.confidence.value * 100)
+        confidence_str = f"**跨因子置信度**：{pct}%"
+    elif isinstance(report.confidence, InsufficientEvidence):
+        confidence_str = f"**置信度**：證據不足（{report.confidence.cause.value}）"
+
+    facet_summary = ""
+    if hasattr(report.confidence, "facet_stances"):
+        stances = report.confidence.facet_stances
+        facet_lines = [f"  - {f.value}：{s.value}" for f, s in stances.items()]
+        facet_summary = "\n".join(facet_lines)
+
+    return f"""# {emoji} {report.asset.value} 分析研報
+
+> **分析題目**：{report.question}
+
+---
+
+## 📊 Executive Summary
+
+| 指標 | 結果 |
+|------|------|
+| 研判方向 | **{direction}** {emoji} |
+| {confidence_str} | |
+| 判斷條目 | {len(report.claims)} 則（已通過引用檢核） |
+| 證據項數 | {len(report.evidence)} 項（來自獨立來源） |
+| 被丟棄判斷 | {len(report.dropped_claims)} 則（未通過引用檢核） |
+
+### 各面向判定
+{facet_summary}"""
+
+
+def _layered_claims(report: Report) -> str:
+    """按 fact → inference → conclusion 分層呈現。"""
+    lines = ["## 📋 核心判斷（分層結構）\n"]
+
+    role_order = [
+        (ClaimRole.FACT, "事實層 (Fact)", "直接從證據觀察到的數據"),
+        (ClaimRole.INFERENCE, "推論層 (Inference)", "從多項事實交叉推導的邏輯判斷"),
+        (ClaimRole.CONCLUSION, "結論層 (Conclusion)", "最終市場觀點"),
+    ]
+
+    for role, title, desc in role_order:
+        claims = [c for c in report.claims if c.role == role]
+        if claims:
+            lines.append(f"### {title}")
+            lines.append(f"*{desc}*\n")
+            for claim in claims:
+                citations = " ".join(f"`{eid}`" for eid in claim.evidence_ids)
+                lines.append(f"- {claim.text} [{citations}]")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def _risk_section(report: Report) -> str:
+    """風險、反方證據、不確定性的專區。"""
+    lines = ["## ⚠️ 風險與不確定性\n"]
+
+    counter = [c for c in report.claims if c.role == ClaimRole.COUNTER_EVIDENCE]
+    risks = [c for c in report.claims if c.role == ClaimRole.RISK]
+    watches = [c for c in report.claims if c.role == ClaimRole.WATCH]
+    invalidations = [c for c in report.claims if c.role == ClaimRole.INVALIDATION]
+
+    if counter:
+        lines.append("### 反方證據")
+        for c in counter:
+            lines.append(f"- ❌ {c.text}")
+        lines.append("")
+
+    if risks:
+        lines.append("### 風險因子")
+        for c in risks:
+            lines.append(f"- 🔴 {c.text}")
+        lines.append("")
+
+    if invalidations:
+        lines.append("### 推翻條件")
+        for c in invalidations:
+            lines.append(f"- 🔄 {c.text}")
+        lines.append("")
+
+    if watches:
+        lines.append("### 後續觀察重點")
+        for c in watches:
+            lines.append(f"- 👁️ {c.text}")
+        lines.append("")
+
+    if not (counter or risks or watches or invalidations):
+        lines.append("*本次分析未產出風險類判斷 — 請注意這本身就是一個限制。*\n")
+
+    return "\n".join(lines)
+
+
+def _investor_insights(report: Report) -> str:
+    """投資者常見關注議題 — 根據分析結果客製化。"""
+    lines = ["## 💡 投資者洞察\n"]
+
+    # DCA 建議觀察
+    lines.append("### 定期定額 (DCA) 觀察")
+    if report.stance == Stance.NEUTRAL:
+        lines.append("- 盤整階段適合維持定期定額策略，避免追高殺低")
+        lines.append("- 建議觀察區間突破方向後再調整加碼節奏")
+    elif report.stance == Stance.BULLISH:
+        lines.append("- 多頭趨勢中 DCA 可維持原有節奏")
+        lines.append("- 若已有未實現利潤，可考慮設置移動止損保護")
+    else:
+        lines.append("- 空頭環境中 DCA 反而是攤平成本的好時機")
+        lines.append("- 但需注意若持續下跌，應設定最大投入上限")
+    lines.append("")
+
+    # 關鍵價位
+    lines.append("### 關注價位與事件")
+    tech_claims = [c for c in report.claims if c.facet == Facet.TECHNICAL]
+    if tech_claims:
+        lines.append("根據技術面證據：")
+        for tc in tech_claims[:3]:
+            lines.append(f"- {tc.text}")
+    else:
+        lines.append("- 本次未取得足夠技術面數據以標示關鍵價位")
+    lines.append("")
+
+    # 時間框架建議
+    lines.append("### 時間框架考量")
+    lines.append("- **短線 (1-7天)**：關注技術面訊號與資金費率變化")
+    lines.append("- **中線 (1-4週)**：關注基本面事件（升級/解鎖/監管）")
+    lines.append("- **長線 (1-3月)**：關注鏈上活動趨勢與機構持倉變化")
+    lines.append("")
+
+    lines.append("> ⚠️ **免責聲明**：本報告由自動化系統依公開資料生成，僅供資訊參考，不構成投資建議。")
+    lines.append("> HOYA BIT 提供 100% 法幣銀行信託隔離保障。")
+
+    return "\n".join(lines)
+
+
+def _evidence_table(report: Report) -> str:
+    """證據溯源表格。"""
+    lines = ["## 📎 證據溯源\n"]
+    lines.append("| ID | 面向 | 摘要 | 來源 | 取得時間 |")
+    lines.append("|----|----|------|------|---------|")
+
+    for ev in report.evidence:
+        source_name = ev.excerpts[0].source_id.split(":")[0] if ev.excerpts else "unknown"
+        fetched = ev.excerpts[0].retrieved_at.strftime("%m/%d %H:%M") if ev.excerpts else "N/A"
+        summary_short = ev.summary[:50] + "..." if len(ev.summary) > 50 else ev.summary
+        lines.append(f"| `{ev.id}` | {ev.facet.value} | {summary_short} | {source_name} | {fetched} |")
+
+    return "\n".join(lines)
+
+
+def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
+    """方法論與分析限制說明。"""
+    trace_steps = len(outcome.trace.nodes)
+    sources_used = {
+        excerpt.source_id.split(":")[0]
+        for ev in report.evidence
+        for excerpt in ev.excerpts
+    }
+
+    return f"""## 📐 方法論
+
+- **分析框架**：ReAct (Reasoning + Acting) 循環推理
+- **推理步驟**：{trace_steps} 步
+- **證據來源**：{", ".join(sorted(sources_used)) or "N/A"}
+- **信心度計算**：獨立性 25% + 覆蓋 25% + 時效 20% + 一致性 20% + 完整性 10%
+- **引用檢核**：所有判斷必須掛載真實存在的證據 ID，否則系統丟棄
+
+### 已知限制
+
+- 社群情緒資料未接入（Reddit/Discord 需 OAuth）
+- 鏈上數據（TVL、巨鯨地址）尚未整合
+- 歷史 OHLCV 資料截止於 2026-05-31 UTC
+- 單次分析時間限制 15 分鐘
+- 報告數值有 fetched_at 標記，超過 24 小時可能已過時
+
+---
+
+*報告生成時間：UTC | 分析回合 ID：`{outcome.run_id}`*
+"""
+
+
+__all__ = ["enhanced_report_markdown"]

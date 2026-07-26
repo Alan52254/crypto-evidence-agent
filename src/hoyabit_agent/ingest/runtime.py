@@ -27,11 +27,25 @@ async def build_market_evidence_source(
 async def build_competition_sources(
     client: httpx.AsyncClient, model: ModelProvider
 ) -> list[EvidenceSource]:
-    """組裝正式競賽的獨立多源證據 adapters。"""
+    """組裝正式競賽的獨立多源證據 adapters。
+
+    7 個獨立來源、4 面全覆蓋：
+    - 技術面：Binance Spot + 歷史 OHLCV
+    - 籌碼面：Binance Derivatives
+    - 基本面：CoinDesk/CT + Blocktempo/Blockworks + 官方公告
+    - 情緒面：新聞文本打分（中英文交叉）
+    """
+    from hoyabit_agent.sources.rss_extended import (
+        ExtendedNewsSource,
+        OfficialAnnouncementSource,
+    )
+
     sources: list[EvidenceSource] = [
         BinanceSpotSource(client),
         BinanceDerivativesSource(client),
         NewsRssSource(client, labeller=model),
+        ExtendedNewsSource(client, labeller=model),
+        OfficialAnnouncementSource(client, labeller=model),
     ]
     historical = await build_market_evidence_source(client)
     if historical is not None:

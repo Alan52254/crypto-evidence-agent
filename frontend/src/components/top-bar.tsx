@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Menu,
   Bell,
@@ -27,20 +27,59 @@ interface TopBarProps {
   darkMode?: boolean;
 }
 
-const TICKERS = [
-  { symbol: "BTC", price: "67,234.18", change: "+2.45%", up: true },
-  { symbol: "ETH", price: "3,399.52", change: "+1.62%", up: true },
-  { symbol: "SOL", price: "156.40", change: "-0.82%", up: false },
-];
+interface TickerData {
+  symbol: string;
+  price: number;
+  change: number;
+}
+
+function useCryptoTickers() {
+  const [tickers, setTickers] = useState<TickerData[]>([]);
+  const marqueeRef = useRef<HTMLDivElement>(null);
+  const pendingRefresh = useRef(false);
+
+  const fetchPrices = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/crypto-prices");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.tickers?.length) setTickers(data.tickers);
+    } catch {
+      /* silent — keep last known prices */
+    }
+  }, []);
+
+  useEffect(() => { fetchPrices(); }, [fetchPrices]);
+
+  // Refresh data after one full marquee cycle
+  useEffect(() => {
+    const el = marqueeRef.current;
+    if (!el) return;
+    const handleIteration = () => {
+      if (!pendingRefresh.current) {
+        pendingRefresh.current = true;
+        fetchPrices().finally(() => { pendingRefresh.current = false; });
+      }
+    };
+    el.addEventListener("animationiteration", handleIteration);
+    return () => el.removeEventListener("animationiteration", handleIteration);
+  }, [fetchPrices, tickers]);
+
+  return { tickers, marqueeRef };
+}
 
 export function TopBar({ onMenuToggle, remaining, running, onExport, onThemeToggle, darkMode }: TopBarProps) {
   const [marketsOpen, setMarketsOpen] = useState(false);
   const [sectorsOpen, setSectorsOpen] = useState(false);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const { tickers, marqueeRef } = useCryptoTickers();
 
   const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
   const seconds = String(remaining % 60).padStart(2, "0");
+
+  // Duplicate for seamless loop
+  const items = tickers.length > 0 ? [...tickers, ...tickers] : [];
 
   return (
     <>
@@ -61,36 +100,49 @@ export function TopBar({ onMenuToggle, remaining, running, onExport, onThemeTogg
             Alpha Intel AI
           </span>
 
-          {/* Desktop Market Tickers with Red/Green indicators */}
-          <div className="hidden min-w-0 items-center gap-3 md:flex">
-            <TrendingUp className="h-4 w-4 flex-shrink-0 text-secondary" />
-            {TICKERS.map(({ symbol, price, change, up }, i) => (
-              <div key={symbol} className="flex flex-shrink-0 items-center gap-2">
-                {i > 0 && (
-                  <div className="mx-1 h-4 w-px bg-outline-variant" />
-                )}
-                <span className="text-label-caps font-bold text-primary font-mono">
-                  {symbol}
-                </span>
-                <span className="font-mono text-mono-label font-medium text-on-surface">
-                  ${price}
-                </span>
-                <span
-                  className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ${
-                    up
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
-                      : "bg-red-50 text-red-700 border border-red-200/80"
-                  }`}
-                >
-                  {up ? (
-                    <ArrowUpRight className="h-3 w-3 text-emerald-600" />
-                  ) : (
-                    <ArrowDownRight className="h-3 w-3 text-red-600" />
-                  )}
-                  {change}
-                </span>
+          {/* Desktop Market Tickers — Marquee */}
+          <div className="hidden min-w-0 flex-1 items-center overflow-hidden md:flex">
+            <TrendingUp className="h-4 w-4 flex-shrink-0 text-secondary mr-2" />
+            <div className="relative flex-1 overflow-hidden">
+              <div
+                ref={marqueeRef}
+                className="flex w-max items-center gap-6 animate-marquee"
+              >
+                {items.map(({ symbol, price, change }, i) => {
+                  const up = change >= 0;
+                  return (
+                    <a
+                      key={`${symbol}-${i}`}
+                      href="https://tw.stock.yahoo.com/cryptocurrencies"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex flex-shrink-0 items-center gap-2"
+                    >
+                      <span className="text-label-caps font-bold text-primary font-mono">
+                        {symbol}
+                      </span>
+                      <span className="font-mono text-mono-label font-medium text-on-surface">
+                        ${price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <span
+                        className={`flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ${
+                          up
+                            ? "bg-red-50 text-red-700 border border-red-200/80"
+                            : "bg-emerald-50 text-emerald-700 border border-emerald-200/80"
+                        }`}
+                      >
+                        {up ? (
+                          <ArrowUpRight className="h-3 w-3 text-red-600" />
+                        ) : (
+                          <ArrowDownRight className="h-3 w-3 text-emerald-600" />
+                        )}
+                        {up ? "+" : ""}{change.toFixed(2)}%
+                      </span>
+                    </a>
+                  );
+                })}
               </div>
-            ))}
+            </div>
           </div>
         </div>
 

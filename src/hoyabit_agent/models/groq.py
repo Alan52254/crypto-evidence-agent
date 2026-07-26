@@ -181,6 +181,9 @@ class GroqProvider:
         json_mode: bool = False,
     ) -> dict[str, Any] | None:
         """Call Groq's OpenAI-compatible chat API."""
+        import logging
+        logger = logging.getLogger("hoyabit_agent.groq")
+
         url = f"{GROQ_BASE_URL}/chat/completions"
         payload: dict[str, Any] = {
             "model": self._model,
@@ -216,17 +219,29 @@ class GroqProvider:
                     return response.json()
                 except ValueError:
                     return None
+            if response.status_code == 400:
+                # Log the error body for debugging
+                error_body = response.text[:500]
+                logger.warning(f"Groq 400 Bad Request: {error_body}")
+                # If tools caused the 400, retry without tools (fallback to text-only)
+                if tools:
+                    logger.info("Retrying without tools (text-only planning)")
+                    payload.pop("tools", None)
+                    payload.pop("tool_choice", None)
+                    continue
+                return None
             if response.status_code == 429 or response.status_code >= 500:
                 if attempt >= MAX_RETRIES:
                     return None
                 await asyncio.sleep(2**attempt)
                 continue
+            logger.warning(f"Groq HTTP {response.status_code}: {response.text[:200]}")
             return None
         return None
 
 
 def _to_openai_tool(spec: ToolSpec) -> dict[str, Any]:
-    """Convert ToolSpec to OpenAI function calling format."""
+    """Convert ToolSpec to OpenAI function calling format (Groq-compatible)."""
     parameters = dict(spec.parameters)
     properties = dict(parameters.get("properties", {}) or {})
     properties.setdefault("asset", {
@@ -235,6 +250,15 @@ def _to_openai_tool(spec: ToolSpec) -> dict[str, Any]:
         "description": "Target asset",
     })
     parameters["properties"] = properties
+    # Groq requires 'type' and 'required' in parameters
+    parameters.setdefault("type", "object")
+    if "required" not in parameters:
+        parameters["required"] = ["asset"]
+    elif "asset" not in parameters["required"]:
+        parameters["required"] = list(parameters["required"]) + ["asset"]
+    # Remove any non-standard fields that Groq doesn't accept
+    allowed_keys = {"type", "properties", "required", "description"}
+    parameters = {k: v for k, v in parameters.items() if k in allowed_keys}
     return {
         "type": "function",
         "function": {

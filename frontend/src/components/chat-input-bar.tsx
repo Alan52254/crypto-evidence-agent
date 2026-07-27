@@ -117,7 +117,7 @@ export function ChatInputBar({
             <button
               type="submit"
               disabled={running || !question.trim()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-on-primary transition-all hover:bg-primary/85 active:scale-95 disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-on-accent transition-all hover:brightness-95 active:scale-95 disabled:opacity-30"
               aria-label="Send analysis"
             >
               <ArrowUp className="h-[18px] w-[18px]" />

@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { MarketsPanel } from "@/components/panels/markets-panel";
 import { SectorsPanel } from "@/components/panels/sectors-panel";
 import { PortfolioPanel } from "@/components/panels/portfolio-panel";
-import { NotificationsPanel } from "@/components/panels/notifications-panel";
+import {
+  NotificationsPanel,
+  INITIAL_NOTIFICATIONS,
+  type Notification,
+} from "@/components/panels/notifications-panel";
 
 interface TopBarProps {
   onMenuToggle: () => void;
@@ -73,7 +77,22 @@ export function TopBar({ onMenuToggle, remaining, running, onExport, onThemeTogg
   const [sectorsOpen, setSectorsOpen] = useState(false);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
   const { tickers, marqueeRef } = useCryptoTickers();
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  function markAllNotificationsRead() {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  }
+
+  function clearAllNotifications() {
+    setNotifications([]);
+  }
+
+  function dismissNotification(id: string) {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }
 
   const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
   const seconds = String(remaining % 60).padStart(2, "0");
@@ -191,8 +210,10 @@ export function TopBar({ onMenuToggle, remaining, running, onExport, onThemeTogg
             aria-label="Notifications"
           >
             <Bell className="h-4 w-4" />
-            {/* Unread dot */}
-            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+            {/* Unread dot — only renders while there's something unread */}
+            {unreadCount > 0 && (
+              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+            )}
           </button>
 
           {/* Dark mode toggle */}
@@ -227,7 +248,14 @@ export function TopBar({ onMenuToggle, remaining, running, onExport, onThemeTogg
       <MarketsPanel open={marketsOpen} onClose={() => setMarketsOpen(false)} />
       <SectorsPanel open={sectorsOpen} onClose={() => setSectorsOpen(false)} />
       <PortfolioPanel open={portfolioOpen} onClose={() => setPortfolioOpen(false)} />
-      <NotificationsPanel open={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
+      <NotificationsPanel
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        notifications={notifications}
+        onMarkAllRead={markAllNotificationsRead}
+        onClearAll={clearAllNotifications}
+        onDismiss={dismissNotification}
+      />
     </>
   );
 }

@@ -251,6 +251,8 @@ function backendRunToHistoryItem(run: Record<string, unknown>): HistoryItem | nu
             }))
           : [],
       })),
+      enhanced_report_md:
+        typeof run.enhanced_report_md === "string" ? run.enhanced_report_md : undefined,
     };
 
     return {

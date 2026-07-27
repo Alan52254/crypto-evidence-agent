@@ -30,7 +30,7 @@ async def build_competition_sources(
     """組裝正式競賽的獨立多源證據 adapters。
 
     7 個獨立來源、4 面全覆蓋：
-    - 技術面：Binance Spot + 歷史 OHLCV
+    - 技術面：Binance Spot + 歷史 OHLCV（直讀 CSV，不需要 PostgreSQL）
     - 籌碼面：Binance Derivatives
     - 基本面：CoinDesk/CT + Blocktempo/Blockworks + 官方公告
     - 情緒面：新聞文本打分（中英文交叉）

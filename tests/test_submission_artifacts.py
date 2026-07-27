@@ -40,10 +40,12 @@ async def test_submission_contains_traceable_claim_mapping(tmp_path: Path) -> No
     assert {path.name for path in paths} == {
         "final_report.md",
         "evidence_list.json",
-        "execution_log.json",
+        "execution_log.jsonl",
+        "output_manifest.json",
     }
     records = json.loads(paths[1].read_text(encoding="utf-8"))
     assert records[0]["related_claim"] == ["事件偏正面"]
     assert records[0]["sources"][0]["fetched_at"]
-    log = json.loads(paths[2].read_text(encoding="utf-8"))
-    assert any(node["executions"] for node in log["nodes"])
+    # execution_log.jsonl — 每行一個 JSON event
+    log_lines = [json.loads(line) for line in paths[2].read_text(encoding="utf-8").strip().split("\n") if line.strip()]
+    assert any(entry.get("executions") for entry in log_lines)

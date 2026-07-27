@@ -43,11 +43,18 @@ Python SDK v2 是為它重寫的。4 週內不得升 2.x。見 `docs/research/00
 
 ## Git 分支規則
 
-- **不要直接 commit 到 `main`。** `main` 是隊友的主線，我的新開發一律開獨立 feature branch。
+- **不要直接 commit 到 `main`。** 所有改動一律在我的 feature branch 上做。
 - 分支命名：`feature/<簡短描述>`，例如 `feature/coingecko-source`、`feature/time-window`。
-- 完成後 push 到 remote，再開 PR 讓隊友 review。
+- 完成後 push 到 remote 的我的分支。
 - 不要 rebase 或 force push 隊友的 commit。
-- 盡量不大改現有檔案的結構；新功能優先放新檔案，只在必要時修改現有介面。
+- 程式碼可以自由修改，不需要避開隊友的檔案。只要最終 push 到我的分支即可。
+
+## 資訊不足時的處理原則
+
+- **動手前必須確認資訊完整。** 如果我對需求、規格、格式、API 規範等有任何不確定，
+  我必須**先停下來問你**，不能猜測或自行假設。
+- 告訴你我缺什麼資訊、為什麼需要它、以及推薦你去問哪個 AI 或查哪份文件。
+- 你回覆後我才動手。這條規則優先於「預設動手做」。
 
 ## 動手前
 

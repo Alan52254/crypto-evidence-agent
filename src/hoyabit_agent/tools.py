@@ -268,7 +268,15 @@ def assess_confidence(
         + completeness * 0.10
     )
 
-    return Confidence(value=round(value, 4), facet_stances=dict(stances))
+    return Confidence(
+        value=round(value, 4),
+        facet_stances=dict(stances),
+        independence=round(independence, 4),
+        coverage=round(coverage, 4),
+        freshness=round(freshness, 4),
+        agreement=round(agreement, 4),
+        completeness=round(completeness, 4),
+    )
 
 
 def overall_stance(confidence: ConfidenceResult) -> Stance:

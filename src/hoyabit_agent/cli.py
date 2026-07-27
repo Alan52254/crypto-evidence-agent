@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import sys
 from collections.abc import AsyncIterator
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -178,8 +179,13 @@ async def _run(
     save: bool,
     html_path: str | None,
     output_dir: Path | None = None,
+    as_of_date: date | None = None,
 ) -> int:
-    request = AnalysisRequest(asset=asset, question=question)
+    # --live 且未明確指定截止日時預設今天,落在即時模式 —— 否則 AnalysisRequest
+    # 的預設截止日(資料集截止 2026-05-31)會讓 regime 判為回測,把剛建好的
+    # live 證據源全數濾掉(Step 4),使 --live 悄悄退化成只查歷史資料集。
+    resolved_as_of = as_of_date or (date.today() if live else AnalysisRequest.DATASET_CUTOFF)
+    request = AnalysisRequest(asset=asset, question=question, as_of_date=resolved_as_of)
     if live:
         try:
             async with _live_stack() as (sources, model, description):
@@ -258,7 +264,17 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="把推論軌跡輸出成自包含 HTML 檔（可直接用瀏覽器開）",
     )
+    parser.add_argument(
+        "--as-of-date",
+        metavar="YYYY-MM-DD",
+        default=None,
+        help=(
+            "分析截止日（ISO 格式）；決定回測/即時模式。"
+            "--live 且省略時預設今天；不加 --live 時預設資料集截止日 2026-05-31。"
+        ),
+    )
     args = parser.parse_args(argv)
+    as_of_date = date.fromisoformat(args.as_of_date) if args.as_of_date else None
     return int(
         run_async(
             _run(
@@ -268,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                 save=args.save,
                 html_path=args.html,
                 output_dir=args.output_dir or (Path("submissions") if args.live else None),
+                as_of_date=as_of_date,
             )
         )
     )

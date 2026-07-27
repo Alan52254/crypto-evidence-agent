@@ -12,6 +12,7 @@ import json
 import time
 import uuid
 from collections.abc import Callable, Mapping
+from datetime import datetime, UTC
 
 from hoyabit_agent import gaps as gap_rules
 from hoyabit_agent.claim_ledger import LedgerResult, coverage_ratio, verify
@@ -256,6 +257,8 @@ async def analyse(
             gap_state=gap,
             requirement_brief=requirement.describe(),
             gap_brief=assessment.describe(),
+            analysis_timestamp=datetime.now(UTC).isoformat(),
+
         )
         decision = await model.plan(context, tools)
 

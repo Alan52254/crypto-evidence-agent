@@ -91,6 +91,10 @@ LABEL_SYSTEM = {
 def plan_prompt(context: GatherContext) -> str:
     """把當下的蒐集狀態寫成給模型的敘述。"""
     lines = [f"分析標的：{context.asset.value}", f"分析題目：{context.question}", ""]
+    # 時間錨點 —— 讓模型知道「現在幾點」以正確判斷證據新鮮度
+    if context.analysis_timestamp:
+        lines.append(f"本次分析時間（UTC）：{context.analysis_timestamp}")
+        lines.append("")
 
     # 題型需求先講 —— 它決定「什麼算蒐集完成」，是這一輪規劃的框架。
     if context.requirement_brief:
@@ -155,6 +159,8 @@ def synthesis_prompt(
         for excerpt in item.excerpts:
             lines.append(f"    原文：{excerpt.text}")
             lines.append(f"    出處：{excerpt.url}")
+            lines.append(f"    取得時間：{excerpt.retrieved_at.isoformat()}")
+
 
     lines.append("")
     lines.append("── 證據品質摘要 ──")

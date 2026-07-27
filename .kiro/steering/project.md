@@ -41,6 +41,14 @@ Python SDK v2 是為它重寫的。4 週內不得升 2.x。見 `docs/research/00
   **不需要任何 mock** —— 若你發現要 mock 才能測，那東西放錯層了。
 - 測試名稱描述使用者可觀察的行為，不是函式名稱。
 
+## Git 分支規則
+
+- **不要直接 commit 到 `main`。** `main` 是隊友的主線，我的新開發一律開獨立 feature branch。
+- 分支命名：`feature/<簡短描述>`，例如 `feature/coingecko-source`、`feature/time-window`。
+- 完成後 push 到 remote，再開 PR 讓隊友 review。
+- 不要 rebase 或 force push 隊友的 commit。
+- 盡量不大改現有檔案的結構；新功能優先放新檔案，只在必要時修改現有介面。
+
 ## 動手前
 
 - 讀 `CONTEXT.md` 的術語表。「證據」「證據面」「判斷」「方向」「信心度」

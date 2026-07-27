@@ -272,7 +272,8 @@ def write_submission(outcome: AnalysisOutcome, output_dir: Path) -> tuple[Path, 
     run_dir = output_dir / outcome.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     report_path = run_dir / "final_report.md"
-    evidence_path = run_dir / "evidence_list.json"
+    evidence_json_path = run_dir / "evidence_list.json"
+    evidence_csv_path = run_dir / "evidence_list.csv"
     log_path = run_dir / "execution_log.jsonl"
     manifest_path = run_dir / "output_manifest.json"
 
@@ -285,7 +286,10 @@ def write_submission(outcome: AnalysisOutcome, output_dir: Path) -> tuple[Path, 
         evidence_payload = evidence_list(outcome.report)
 
     evidence_json = json.dumps(evidence_payload, ensure_ascii=False, indent=2) + "\n"
-    evidence_path.write_text(evidence_json, encoding="utf-8")
+    evidence_json_path.write_text(evidence_json, encoding="utf-8")
+
+    # evidence.csv — 讓非技術人員用 Excel 檢視
+    evidence_csv_path.write_text(_evidence_csv(evidence_payload), encoding="utf-8-sig")
 
     log_jsonl = execution_log_jsonl(outcome)
     log_path.write_text(log_jsonl + "\n", encoding="utf-8")
@@ -293,7 +297,37 @@ def write_submission(outcome: AnalysisOutcome, output_dir: Path) -> tuple[Path, 
     manifest = output_manifest(outcome)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    return report_path, evidence_path, log_path, manifest_path
+    return report_path, evidence_json_path, evidence_csv_path, log_path, manifest_path
+
+
+def _evidence_csv(records: list[dict[str, Any]]) -> str:
+    """把 evidence list 轉成 CSV 字串。"""
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow([
+        "evidence_id", "facet", "source", "source_type", "fetched_at",
+        "summary", "stance_hint", "sha256",
+        "quality_score", "relevance_score", "freshness_score", "independence_score",
+    ])
+    for record in records:
+        writer.writerow([
+            record.get("evidence_id", ""),
+            record.get("facet", ""),
+            record.get("source", ""),
+            record.get("source_type", ""),
+            record.get("fetched_at", ""),
+            record.get("summary", "")[:200],
+            record.get("stance_hint", ""),
+            record.get("sha256", ""),
+            record.get("quality_score", ""),
+            record.get("relevance_score", ""),
+            record.get("freshness_score", ""),
+            record.get("independence_score", ""),
+        ])
+    return output.getvalue()
 
 
 __all__ = ["evidence_list", "execution_log", "execution_log_jsonl", "output_manifest", "write_submission"]

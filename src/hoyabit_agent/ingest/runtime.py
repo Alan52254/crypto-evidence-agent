@@ -40,6 +40,7 @@ async def build_competition_sources(
         ExtendedNewsSource,
         OfficialAnnouncementSource,
     )
+    from hoyabit_agent.sources.coingecko import CoinGeckoSource
 
     sources: list[EvidenceSource] = [
         BinanceSpotSource(client),
@@ -47,6 +48,7 @@ async def build_competition_sources(
         NewsRssSource(client, labeller=model),
         ExtendedNewsSource(client, labeller=model),
         OfficialAnnouncementSource(client, labeller=model),
+        CoinGeckoSource(client),
     ]
     # 優先用 pgvector 版本（完整語意檢索）；連不上就用 CSV 直讀版
     historical = await build_market_evidence_source(client)

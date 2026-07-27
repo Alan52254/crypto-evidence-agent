@@ -49,6 +49,7 @@ _MEDIUM_PREFIXES = (
     "cointelegraph",
     "blocktempo",
     "blockworks",
+    "coingecko",
 )
 
 

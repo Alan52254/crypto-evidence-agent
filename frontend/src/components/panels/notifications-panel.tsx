@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   X,
   Bell,
@@ -10,11 +9,10 @@ import {
   Zap,
   Trash2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
-type NotificationType = "success" | "warning" | "info" | "alert";
+export type NotificationType = "success" | "warning" | "info" | "alert";
 
-interface Notification {
+export interface Notification {
   id: string;
   type: NotificationType;
   title: string;
@@ -23,7 +21,7 @@ interface Notification {
   read: boolean;
 }
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
+export const INITIAL_NOTIFICATIONS: Notification[] = [
   {
     id: "n1",
     type: "success",
@@ -69,26 +67,23 @@ const INITIAL_NOTIFICATIONS: Notification[] = [
 interface NotificationsPanelProps {
   open: boolean;
   onClose: () => void;
+  notifications: Notification[];
+  onMarkAllRead: () => void;
+  onClearAll: () => void;
+  onDismiss: (id: string) => void;
 }
 
-export function NotificationsPanel({ open, onClose }: NotificationsPanelProps) {
-  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS);
-
+export function NotificationsPanel({
+  open,
+  onClose,
+  notifications,
+  onMarkAllRead,
+  onClearAll,
+  onDismiss,
+}: NotificationsPanelProps) {
   if (!open) return null;
 
   const unreadCount = notifications.filter((n) => !n.read).length;
-
-  function markAllRead() {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }
-
-  function clearAll() {
-    setNotifications([]);
-  }
-
-  function dismissNotification(id: string) {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  }
 
   const iconMap: Record<NotificationType, typeof CheckCircle2> = {
     success: CheckCircle2,
@@ -130,7 +125,7 @@ export function NotificationsPanel({ open, onClose }: NotificationsPanelProps) {
           </div>
           <div className="flex items-center gap-1">
             <button
-              onClick={markAllRead}
+              onClick={onMarkAllRead}
               className="rounded-md px-2 py-1 text-[10px] text-secondary hover:bg-surface-container-low transition-colors"
             >
               全部已讀
@@ -177,7 +172,7 @@ export function NotificationsPanel({ open, onClose }: NotificationsPanelProps) {
                     </p>
                   </div>
                   <button
-                    onClick={() => dismissNotification(notification.id)}
+                    onClick={() => onDismiss(notification.id)}
                     className="flex-shrink-0 rounded p-1 text-secondary opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
                   >
                     <X className="h-3 w-3" />
@@ -195,7 +190,7 @@ export function NotificationsPanel({ open, onClose }: NotificationsPanelProps) {
         {notifications.length > 0 && (
           <div className="pt-3 border-t border-outline-variant mt-3">
             <button
-              onClick={clearAll}
+              onClick={onClearAll}
               className="flex items-center justify-center gap-1.5 w-full rounded-lg py-2 text-[11px] text-secondary hover:text-red-600 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />

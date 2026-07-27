@@ -223,6 +223,29 @@ html.dark .ai-card {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
 }
 
+/* ─── Accent Theme (personalization) ───
+   Orthogonal to light/dark: `--accent`/`--accent-2` drive the brand-accent
+   surfaces only (send button, AI avatar, active nav, logo mark) — never
+   heading/body ink (`text-primary` stays untouched). Classic theme's
+   defaults exactly reproduce the pre-existing primary/on-primary values,
+   so components that switch to `bg-accent`/`text-on-accent` look identical
+   until the user opts into Aurum. */
+:root {
+  --accent: #191c1e;
+  --on-accent: #ffffff;
+  --accent-2: #565f6d;
+}
+.dark {
+  --accent: #c8d0e8;
+  --on-accent: #0f1218;
+  --accent-2: #8b95a8;
+}
+html.theme-aurum {
+  --accent: #f5b93d;
+  --on-accent: #241a02;
+  --accent-2: #a855f7;
+}
+
 /* ─── Crypto Marquee Animation ─── */
 @keyframes marquee {
   0% { transform: translateX(0%); }

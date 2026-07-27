@@ -65,8 +65,13 @@ function markdownToHtml(md: string): string {
 
   // Wrap consecutive <li> in <ul>
   html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match}</ul>`);
-  // Wrap consecutive <tr> in <table>
-  html = html.replace(/(<tr>.*<\/tr>\n?)+/g, (match) => `<table>${match}</table>`);
+  // Wrap consecutive <tr> in <table>, and give the table its own horizontal
+  // scroll container — a wide table must never push the report card layout
+  // itself out of shape.
+  html = html.replace(
+    /(<tr>.*<\/tr>\n?)+/g,
+    (match) => `<div class="table-scroll"><table>${match}</table></div>`,
+  );
   // Paragraphs: wrap remaining lines
   html = html
     .split("\n")
@@ -220,7 +225,7 @@ function AIBubble({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex justify-start animate-fade-in">
       <div className="flex max-w-[92%] gap-3 md:max-w-[82%]">
-        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm font-bold text-[12px]">
+        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent text-on-accent shadow-sm font-bold text-[12px]">
           AI
         </div>
         <div className="min-w-0 flex-1">
@@ -383,7 +388,8 @@ function ReportResponse({
               [&_h1]:text-headline-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-6 [&_h1]:mb-3
               [&_h2]:text-headline-md [&_h2]:font-bold [&_h2]:text-primary [&_h2]:mt-5 [&_h2]:mb-2
               [&_h3]:text-body-lg [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-4 [&_h3]:mb-1
-              [&_table]:w-full [&_table]:text-[12px] [&_table]:border-collapse
+              [&_.table-scroll]:overflow-x-auto [&_.table-scroll]:max-w-full [&_.table-scroll]:-mx-1 [&_.table-scroll]:px-1
+              [&_table]:w-full [&_table]:min-w-[420px] [&_table]:text-[12px] [&_table]:border-collapse
               [&_th]:border [&_th]:border-outline-variant [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold
               [&_td]:border [&_td]:border-outline-variant [&_td]:px-3 [&_td]:py-1.5
               [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1

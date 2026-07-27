@@ -17,7 +17,7 @@ import httpx
 
 from hoyabit_agent.arguments import bounded_int
 from hoyabit_agent.dedup import assign_event_keys
-from hoyabit_agent.domain import Asset, Evidence, Facet, LabelAspect, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, LabelAspect, SourceExcerpt
 from hoyabit_agent.lexicon import LexiconLabeller
 from hoyabit_agent.seams import Arguments, ToolSpec
 from hoyabit_agent.sources.news import Article, Labeller, mentions, parse_feed
@@ -45,7 +45,12 @@ OFFICIAL_FEEDS: dict[Asset, tuple[tuple[str, str], ...]] = {
 
 
 class ExtendedNewsSource:
-    """Blocktempo + Blockworks RSS — 基本面 + 情緒面的補充證據源。"""
+    """Blocktempo + Blockworks RSS — 基本面 + 情緒面的補充證據源。
+
+    RSS 抓的是**當下**的最新文章,無法以歷史截止日限定,只在即時模式合規。
+    """
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(
         self,
@@ -171,7 +176,12 @@ class ExtendedNewsSource:
 
 
 class OfficialAnnouncementSource:
-    """官方公告 RSS — 最高品質的 fundamental 證據。"""
+    """官方公告 RSS — 最高品質的 fundamental 證據。
+
+    同樣只抓得到當下的最新公告,只在即時模式合規。
+    """
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(
         self,

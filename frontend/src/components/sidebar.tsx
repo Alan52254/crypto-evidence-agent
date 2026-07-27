@@ -68,7 +68,7 @@ export function Sidebar({
 
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-4 py-4 border-b border-outline-variant/50">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary shadow-sm font-bold">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-accent text-on-accent shadow-sm font-bold">
             <span className="text-[14px]">AI</span>
           </div>
           <div className="min-w-0">
@@ -94,7 +94,7 @@ export function Sidebar({
                 className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-150 text-left w-full
                   ${
                     isActive
-                      ? "bg-primary text-on-primary shadow-sm font-semibold"
+                      ? "bg-accent text-on-accent shadow-sm font-semibold"
                       : "text-secondary hover:bg-surface-container-low hover:text-primary"
                   }`}
               >

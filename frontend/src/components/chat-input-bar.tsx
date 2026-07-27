@@ -19,7 +19,14 @@ interface ChatInputBarProps {
   onSubmit: (event: FormEvent) => void;
 }
 
-const ASSETS: Asset[] = ["BTC", "ETH", "SOL", "BNB", "XRP"];
+const ASSETS: { value: Asset; label: string }[] = [
+  { value: "Market", label: "Market" },
+  { value: "BTC", label: "比特幣" },
+  { value: "ETH", label: "以太坊" },
+  { value: "SOL", label: "SOL" },
+  { value: "BNB", label: "BNB" },
+  { value: "XRP", label: "XRP" },
+];
 
 export function ChatInputBar({
   asset,
@@ -78,8 +85,8 @@ export function ChatInputBar({
                   className="appearance-none rounded-lg border-none bg-surface-container-low py-1.5 pl-3 pr-7 font-mono text-[12px] font-semibold text-primary transition-colors hover:bg-surface-container focus:outline-none focus:ring-0"
                 >
                   {ASSETS.map((a) => (
-                    <option key={a} value={a}>
-                      {a}
+                    <option key={a.value} value={a.value}>
+                      {a.label}
                     </option>
                   ))}
                 </select>

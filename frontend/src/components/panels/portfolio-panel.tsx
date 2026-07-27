@@ -12,7 +12,7 @@ import {
   PieChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Asset } from "@/lib/contracts";
+import type { Asset, CoinAsset } from "@/lib/contracts";
 
 interface Holding {
   asset: Asset;
@@ -36,7 +36,7 @@ interface PortfolioPanelProps {
 export function PortfolioPanel({ open, onClose }: PortfolioPanelProps) {
   const [holdings, setHoldings] = useState<Holding[]>(DEMO_HOLDINGS);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newAsset, setNewAsset] = useState<Asset>("BTC");
+  const [newAsset, setNewAsset] = useState<CoinAsset>("BTC");
   const [newAmount, setNewAmount] = useState("");
   const [newCost, setNewCost] = useState("");
 
@@ -52,7 +52,7 @@ export function PortfolioPanel({ open, onClose }: PortfolioPanelProps) {
     const cost = parseFloat(newCost);
     if (isNaN(amount) || isNaN(cost) || amount <= 0 || cost <= 0) return;
 
-    const priceMap: Record<Asset, number> = {
+    const priceMap: Record<CoinAsset, number> = {
       BTC: 67234.18,
       ETH: 3399.52,
       SOL: 156.40,
@@ -191,7 +191,7 @@ export function PortfolioPanel({ open, onClose }: PortfolioPanelProps) {
                 <label className="text-[10px] text-secondary uppercase font-semibold block mb-1">幣種</label>
                 <select
                   value={newAsset}
-                  onChange={(e) => setNewAsset(e.target.value as Asset)}
+                  onChange={(e) => setNewAsset(e.target.value as CoinAsset)}
                   className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-1.5 font-mono text-[12px] text-primary"
                 >
                   {(["BTC", "ETH", "SOL", "BNB", "XRP"] as Asset[]).map((a) => (

@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 
-const SYMBOLS = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD"];
+/**
+ * Binance Futures USDT-M 24hr ticker API — 作為 WebSocket 的 fallback/初始資料源。
+ * 前端主要透過 WebSocket 直連 Binance 即時更新，這個 route 用於初始載入。
+ */
+
+const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
 const DISPLAY_NAMES: Record<string, string> = {
-  "BTC-USD": "BTC",
-  "ETH-USD": "ETH",
-  "SOL-USD": "SOL",
-  "BNB-USD": "BNB",
-  "XRP-USD": "XRP",
+  BTCUSDT: "BTC",
+  ETHUSDT: "ETH",
+  SOLUSDT: "SOL",
+  BNBUSDT: "BNB",
+  XRPUSDT: "XRP",
 };
 
 interface TickerData {
@@ -17,35 +22,34 @@ interface TickerData {
 
 export async function GET() {
   try {
-    const results = await Promise.allSettled(
-      SYMBOLS.map(async (sym) => {
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`;
-        const res = await fetch(url, {
-          headers: { "User-Agent": "Mozilla/5.0" },
-          next: { revalidate: 0 },
-        });
-        if (!res.ok) throw new Error(`Yahoo API ${res.status}`);
-        const json = await res.json();
-        const meta = json.chart.result[0].meta;
-        const price: number = meta.regularMarketPrice;
-        const prevClose: number = meta.chartPreviousClose;
-        const change = ((price - prevClose) / prevClose) * 100;
-        return {
-          symbol: DISPLAY_NAMES[sym],
-          price,
-          change: Math.round(change * 100) / 100,
-        } as TickerData;
-      })
-    );
+    // Binance Futures 24hr ticker — 公開 API 不需要 key
+    const url = `https://fapi.binance.com/fapi/v1/ticker/24hr?symbols=${JSON.stringify(SYMBOLS)}`;
+    const res = await fetch(url, { next: { revalidate: 0 } });
 
-    const tickers: TickerData[] = results
-      .filter((r): r is PromiseFulfilledResult<TickerData> => r.status === "fulfilled")
-      .map((r) => r.value);
+    if (!res.ok) throw new Error(`Binance API ${res.status}`);
+
+    const data: Array<{
+      symbol: string;
+      lastPrice: string;
+      priceChangePercent: string;
+    }> = await res.json();
+
+    const tickers: TickerData[] = data
+      .filter((d) => DISPLAY_NAMES[d.symbol])
+      .map((d) => ({
+        symbol: DISPLAY_NAMES[d.symbol],
+        price: parseFloat(d.lastPrice),
+        change: parseFloat(d.priceChangePercent),
+      }));
+
+    // 保持幣種順序一致
+    const order = ["BTC", "ETH", "SOL", "BNB", "XRP"];
+    tickers.sort((a, b) => order.indexOf(a.symbol) - order.indexOf(b.symbol));
 
     return NextResponse.json({ tickers, ts: Date.now() });
   } catch {
     return NextResponse.json(
-      { error: "Failed to fetch crypto prices" },
+      { error: "Failed to fetch crypto prices from Binance" },
       { status: 502 }
     );
   }

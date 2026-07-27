@@ -37,37 +37,146 @@ interface TickerData {
   change: number;
 }
 
+const BINANCE_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"];
+const DISPLAY_MAP: Record<string, string> = {
+  BTCUSDT: "BTC",
+  ETHUSDT: "ETH",
+  SOLUSDT: "SOL",
+  BNBUSDT: "BNB",
+  XRPUSDT: "XRP",
+};
+const SYMBOL_ORDER = ["BTC", "ETH", "SOL", "BNB", "XRP"];
+
 function useCryptoTickers() {
   const [tickers, setTickers] = useState<TickerData[]>([]);
   const marqueeRef = useRef<HTMLDivElement>(null);
-  const pendingRefresh = useRef(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const tickerMapRef = useRef<Record<string, TickerData>>({});
+  const shouldReconnectRef = useRef(true);
 
-  const fetchPrices = useCallback(async () => {
+  // 初始載入 — 用 REST API fallback
+  const fetchInitial = useCallback(async () => {
     try {
       const res = await fetch("/api/v1/crypto-prices");
       if (!res.ok) return;
       const data = await res.json();
-      if (data.tickers?.length) setTickers(data.tickers);
-    } catch {
-      /* silent — keep last known prices */
-    }
+      if (data.tickers?.length) {
+        setTickers(data.tickers);
+        data.tickers.forEach((t: TickerData) => {
+          tickerMapRef.current[t.symbol] = t;
+        });
+      }
+    } catch { /* silent */ }
   }, []);
 
-  useEffect(() => { fetchPrices(); }, [fetchPrices]);
-
-  // Refresh data after one full marquee cycle
+  // Binance WebSocket 即時連線（含自動重連、指數退避、心跳、24hr 重連）
   useEffect(() => {
-    const el = marqueeRef.current;
-    if (!el) return;
-    const handleIteration = () => {
-      if (!pendingRefresh.current) {
-        pendingRefresh.current = true;
-        fetchPrices().finally(() => { pendingRefresh.current = false; });
+    fetchInitial();
+    shouldReconnectRef.current = true;
+    let reconnectDelay = 5000; // 初始 5 秒，指數退避
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+    let maxLifetimeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimers = () => {
+      if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
+      if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
+      if (maxLifetimeTimer) { clearTimeout(maxLifetimeTimer); maxLifetimeTimer = null; }
+    };
+
+    const connectWs = () => {
+      if (!shouldReconnectRef.current) return;
+
+      const ws = new WebSocket("wss://ws-fapi.binance.com/ws-fapi/v1");
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        // 連線成功 → 重置退避延遲
+        reconnectDelay = 5000;
+
+        // 初始查詢五幣
+        BINANCE_SYMBOLS.forEach((sym, idx) => {
+          ws.send(JSON.stringify({
+            id: `ticker-${idx}-${Date.now()}`,
+            method: "ticker.24hr",
+            params: { symbol: sym },
+          }));
+        });
+
+        // 每 3 秒輪詢即時報價
+        refreshInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            BINANCE_SYMBOLS.forEach((sym, idx) => {
+              ws.send(JSON.stringify({
+                id: `refresh-${idx}-${Date.now()}`,
+                method: "ticker.24hr",
+                params: { symbol: sym },
+              }));
+            });
+          }
+        }, 3000);
+
+        // 心跳：每 3 分鐘發送 ping 維持連線
+        heartbeatInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              id: `ping-${Date.now()}`,
+              method: "ping",
+            }));
+          }
+        }, 180000); // 3 分鐘
+
+        // 24 小時主動重連（連線最長 24 小時）
+        maxLifetimeTimer = setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close(); // 觸發 onclose → 自動重連
+          }
+        }, 23 * 60 * 60 * 1000); // 23 小時（提前 1 小時重連）
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(typeof event.data === "string" ? event.data : "");
+          if (msg.result && msg.result.symbol && DISPLAY_MAP[msg.result.symbol]) {
+            const displayName = DISPLAY_MAP[msg.result.symbol];
+            const updated: TickerData = {
+              symbol: displayName,
+              price: parseFloat(msg.result.lastPrice),
+              change: parseFloat(msg.result.priceChangePercent),
+            };
+            tickerMapRef.current[displayName] = updated;
+
+            const sorted = SYMBOL_ORDER
+              .map((s) => tickerMapRef.current[s])
+              .filter(Boolean) as TickerData[];
+            if (sorted.length > 0) setTickers(sorted);
+          }
+        } catch { /* ignore parse errors */ }
+      };
+
+      ws.onerror = () => { /* silent — onclose will handle reconnect */ };
+
+      ws.onclose = () => {
+        clearTimers();
+        // 指數退避重連（最長 60 秒）
+        if (shouldReconnectRef.current) {
+          setTimeout(connectWs, reconnectDelay);
+          reconnectDelay = Math.min(reconnectDelay * 2, 60000);
+        }
+      };
+    };
+
+    connectWs();
+
+    return () => {
+      shouldReconnectRef.current = false;
+      clearTimers();
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
       }
     };
-    el.addEventListener("animationiteration", handleIteration);
-    return () => el.removeEventListener("animationiteration", handleIteration);
-  }, [fetchPrices, tickers]);
+  }, [fetchInitial]);
 
   return { tickers, marqueeRef };
 }

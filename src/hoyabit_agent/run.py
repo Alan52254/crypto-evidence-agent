@@ -222,6 +222,23 @@ async def analyse(
         registry[name].spec for name in sorted(registry)
     )
 
+    # 預取低成本來源（CoinGecko、歷史 CSV）—— 不需要模型決定，直接先拿
+    prefetch_names = ("coingecko_market", "market_dataset_context")
+    prefetch_results = await asyncio.gather(
+        *(
+            _invoke(
+                ToolInvocation(name, {"asset": asset.value}),
+                registry, asset, io_timeout_seconds,
+            )
+            for name in prefetch_names
+            if name in registry
+        ),
+        return_exceptions=True,
+    )
+    for result in prefetch_results:
+        if isinstance(result, tuple):
+            gathered = merge_independent_evidence(gathered, result)
+
     assessment = gap_rules.assess(gathered, requirement)
     used_fallback_plan = False
     for _ in range(max_iterations):

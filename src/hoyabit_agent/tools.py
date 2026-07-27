@@ -228,7 +228,10 @@ def assess_confidence(
 
     # 1. Agreement (一致性) — 20%
     counts = Counter(directional.values())
-    agreement = counts.most_common(1)[0][1] / len(directional)
+    raw_agreement = counts.most_common(1)[0][1] / len(directional)
+    # 表態面數量折扣：2面一致 ≠ 4面一致。只有2面表態時打五折。
+    directional_ratio = len(directional) / len(Facet)
+    agreement = raw_agreement * directional_ratio
 
     # 2. Coverage (覆蓋) — 25%: proportion of 4 facets that have evidence
     coverage = len(present) / len(Facet)
@@ -284,14 +287,30 @@ def overall_stance(confidence: ConfidenceResult) -> Stance:
 
     只由**有表態的面**投票 —— 沉默的面不該被當成一張「中性票」而稀釋結果。
     表態的面平手時為中性，不強行選邊。
+
+    額外規則：若技術面與籌碼面（價格直接相關的面）皆為中性，
+    即使基本面/情緒面偏多或偏空，整體方向仍判中性 ——
+    因為新聞利多但價格不動，不構成「偏多」的方向性判斷。
     """
     if isinstance(confidence, InsufficientEvidence):
         return Stance.NEUTRAL
 
+    stances = confidence.facet_stances
+
+    # 價格面（技術 + 籌碼）是否都沒有明確方向
+    price_facets = (Facet.TECHNICAL, Facet.POSITIONING)
+    price_directional = any(
+        stances.get(f, Stance.NEUTRAL) is not Stance.NEUTRAL for f in price_facets
+    )
+
     directional = [
-        stance for stance in confidence.facet_stances.values() if stance is not Stance.NEUTRAL
+        stance for stance in stances.values() if stance is not Stance.NEUTRAL
     ]
     if not directional:
+        return Stance.NEUTRAL
+
+    # 如果價格面都沒表態，即使新聞面偏多/偏空，整體方向回中性
+    if not price_directional:
         return Stance.NEUTRAL
 
     ranked = Counter(directional).most_common()

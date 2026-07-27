@@ -61,7 +61,7 @@ export function ChatInputBar({
         onSubmit={onSubmit}
         className="pointer-events-auto mx-auto max-w-3xl"
       >
-        <div className="flex flex-col rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-dropdown transition-all focus-within:border-primary focus-within:shadow-input-focus">
+        <div className="relative flex flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-dropdown transition-all focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/20">
           {/* Textarea */}
           <textarea
             ref={textareaRef}
@@ -71,18 +71,18 @@ export function ChatInputBar({
             placeholder="Ask a question about crypto markets, on-chain data, or risk analysis..."
             rows={1}
             maxLength={2000}
-            className="w-full resize-none border-none bg-transparent px-4 pt-3.5 pb-1 text-body-md text-primary placeholder:text-secondary/60 focus:outline-none focus:ring-0"
+            className="w-full resize-none border-none bg-transparent px-4 pt-3.5 pb-2.5 text-body-md text-on-surface placeholder:text-secondary/60 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus:border-none"
           />
 
           {/* Action bar */}
-          <div className="flex items-center justify-between px-2 pb-2">
-            <div className="flex items-center gap-0.5">
+          <div className="flex items-center justify-between px-2.5 pb-2 pt-1">
+            <div className="flex items-center gap-1">
               {/* Asset selector */}
-              <div className="relative">
+              <div className="relative flex items-center">
                 <select
                   value={asset}
                   onChange={(e) => onAssetChange(e.target.value as Asset)}
-                  className="appearance-none rounded-lg border-none bg-surface-container-low py-1.5 pl-3 pr-7 font-mono text-[12px] font-semibold text-primary transition-colors hover:bg-surface-container focus:outline-none focus:ring-0"
+                  className="appearance-none cursor-pointer rounded-lg border-none bg-surface-container-low py-1.5 pl-3 pr-7 font-mono text-[12px] font-semibold text-primary transition-colors hover:bg-surface-container focus:outline-none focus:ring-0"
                 >
                   {ASSETS.map((a) => (
                     <option key={a.value} value={a.value}>
@@ -90,17 +90,17 @@ export function ChatInputBar({
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-secondary" />
+                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-secondary opacity-70" />
               </div>
 
-              <div className="mx-1 h-5 w-px bg-outline-variant" />
+              <div className="mx-1 h-4 w-px bg-outline-variant/60" />
 
               <button
                 type="button"
                 className="rounded-lg p-2 text-secondary transition-colors hover:bg-surface-container-low hover:text-primary"
                 title="Upload File"
               >
-                <Paperclip className="h-[18px] w-[18px]" />
+                <Paperclip className="h-4 w-4" />
               </button>
 
               <button
@@ -108,7 +108,7 @@ export function ChatInputBar({
                 className="rounded-lg p-2 text-secondary transition-colors hover:bg-surface-container-low hover:text-primary"
                 title="Select Market Data"
               >
-                <Database className="h-[18px] w-[18px]" />
+                <Database className="h-4 w-4" />
               </button>
 
               <button
@@ -116,7 +116,7 @@ export function ChatInputBar({
                 className="rounded-lg p-2 text-secondary transition-colors hover:bg-surface-container-low hover:text-primary"
                 title="Terminal Commands"
               >
-                <Terminal className="h-[18px] w-[18px]" />
+                <Terminal className="h-4 w-4" />
               </button>
             </div>
 
@@ -124,7 +124,7 @@ export function ChatInputBar({
             <button
               type="submit"
               disabled={running || !question.trim()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-on-accent transition-all hover:brightness-95 active:scale-95 disabled:opacity-30"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-on-accent transition-all hover:brightness-95 active:scale-95 disabled:opacity-30 cursor-pointer"
               aria-label="Send analysis"
             >
               <ArrowUp className="h-[18px] w-[18px]" />

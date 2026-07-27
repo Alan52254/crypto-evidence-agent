@@ -297,34 +297,35 @@ html.dark.theme-aurum {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   2. 白天模式 (Light Mode Neumorphic Platinum)
+   2. 白天模式 (Light Mode Neumorphic Warm Platinum Slate)
+   使用高質感柔和暖質白金 (#EEF2F6) 作為底色，完美襯托皇家紫與 24K 炫金
    ═══════════════════════════════════════════════════════════════════ */
 html:not(.dark).theme-aurum body {
-  background-color: #E0E5EC;
+  background-color: #EEF2F6;
   color: #191c1e;
 }
 html:not(.dark).theme-aurum .bg-background,
 html:not(.dark).theme-aurum .bg-surface {
-  background-color: #E0E5EC !important;
+  background-color: #EEF2F6 !important;
 }
 html:not(.dark).theme-aurum .bg-surface\/95 {
-  background-color: rgba(224, 229, 236, 0.95) !important;
-  backdrop-filter: blur(12px);
+  background-color: rgba(238, 242, 246, 0.95) !important;
+  backdrop-filter: blur(16px);
 }
 html:not(.dark).theme-aurum .bg-surface-container-lowest {
-  background-color: #E6ECF5 !important;
+  background-color: #F4F7FA !important;
 }
 html:not(.dark).theme-aurum .bg-surface-container-low {
-  background-color: #D8E0EB !important;
+  background-color: #E6EBF2 !important;
 }
 html:not(.dark).theme-aurum .bg-surface-container {
-  background-color: #D0D8E4 !important;
+  background-color: #DCE3EE !important;
 }
 html:not(.dark).theme-aurum .bg-surface-container-high {
-  background-color: #C4CCE0 !important;
+  background-color: #D0D9E6 !important;
 }
 html:not(.dark).theme-aurum .bg-surface-container-highest {
-  background-color: #B8C2D8 !important;
+  background-color: #C2CEE0 !important;
 }
 
 /* 白天模式文字與色塊 */
@@ -355,21 +356,31 @@ html:not(.dark).theme-aurum .bg-primary {
   box-shadow: 0 4px 14px rgba(126, 34, 206, 0.25);
 }
 
-/* 白天模式 3D Neumorphic 浮雕卡片 */
-html:not(.dark).theme-aurum .ai-card {
-  background: #E0E5EC !important;
-  border: 1px solid rgba(126, 34, 206, 0.12) !important;
+/* 白天模式 3D Neumorphic 浮雕與凹陷卡片 */
+html:not(.dark).theme-aurum .ai-card,
+html:not(.dark).theme-aurum .neumorphic-extruded {
+  background: #EEF2F6 !important;
+  border: 1px solid rgba(126, 34, 206, 0.14) !important;
   box-shadow:
-    8px 8px 16px rgba(163, 177, 198, 0.65),
-    -8px -8px 16px rgba(255, 255, 255, 0.8) !important;
+    8px 8px 18px rgba(163, 177, 198, 0.55),
+    -8px -8px 18px rgba(255, 255, 255, 0.85) !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-html:not(.dark).theme-aurum .ai-card:hover {
-  border-color: rgba(126, 34, 206, 0.3) !important;
+html:not(.dark).theme-aurum .ai-card:hover,
+html:not(.dark).theme-aurum .neumorphic-extruded:hover {
+  border-color: rgba(126, 34, 206, 0.32) !important;
   box-shadow:
-    10px 10px 20px rgba(163, 177, 198, 0.75),
-    -10px -10px 20px rgba(255, 255, 255, 0.9),
-    0 0 20px rgba(126, 34, 206, 0.15) !important;
+    10px 10px 22px rgba(163, 177, 198, 0.65),
+    -10px -10px 22px rgba(255, 255, 255, 0.95),
+    0 0 22px rgba(126, 34, 206, 0.18) !important;
+}
+
+html:not(.dark).theme-aurum .neumorphic-inset {
+  background: #EEF2F6 !important;
+  box-shadow:
+    inset 4px 4px 8px #c5ccd8,
+    inset -4px -4px 8px #ffffff !important;
+  border: none !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -432,7 +443,8 @@ html.dark.theme-aurum .bg-primary {
 }
 
 /* 深夜模式 3D Neumorphic 雙發光卡片 */
-html.dark.theme-aurum .ai-card {
+html.dark.theme-aurum .ai-card,
+html.dark.theme-aurum .neumorphic-extruded {
   background: linear-gradient(145deg, rgba(24, 27, 40, 0.96), rgba(12, 14, 22, 0.98)) !important;
   border: 1px solid rgba(255, 215, 0, 0.2) !important;
   box-shadow:
@@ -441,13 +453,22 @@ html.dark.theme-aurum .ai-card {
     0 0 25px -5px rgba(168, 85, 247, 0.18) !important;
   transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
 }
-html.dark.theme-aurum .ai-card:hover {
+html.dark.theme-aurum .ai-card:hover,
+html.dark.theme-aurum .neumorphic-extruded:hover {
   border-color: rgba(255, 215, 0, 0.45) !important;
   box-shadow:
     12px 12px 24px #06070a,
     -12px -12px 24px #24293c,
     0 0 35px -5px rgba(168, 85, 247, 0.35),
     0 0 20px -4px rgba(255, 215, 0, 0.15) !important;
+}
+
+html.dark.theme-aurum .neumorphic-inset {
+  background: #181B28 !important;
+  box-shadow:
+    inset 6px 6px 12px #0a0b10,
+    inset -6px -6px 12px #262c40 !important;
+  border: none !important;
 }
 
 /* ─── 4. 標題自動金紫雙色漸層 ─── */
@@ -522,12 +543,12 @@ html.theme-aurum .sidebar-scroll::-webkit-scrollbar-thumb {
   border-radius: 10px;
 }
 
-/* ─── 7. 輸入區動態遮罩 ─── */
+/* ─── 7. 輸入區動態遮罩 (Floating Island Input Area Mask) ─── */
 html:not(.dark).theme-aurum .input-gradient-mask {
-  background: linear-gradient(to top, #E0E5EC 80%, transparent 100%);
+  background: linear-gradient(to top, #EEF2F6 82%, transparent 100%);
 }
 html.dark.theme-aurum .input-gradient-mask {
-  background: linear-gradient(to top, #12141D 80%, transparent 100%);
+  background: linear-gradient(to top, #12141D 82%, transparent 100%);
 }
 
 /* ─── 8. Placeholder 與選單 ─── */
@@ -558,22 +579,26 @@ html.theme-aurum .bg-red-50 {
   border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
-/* ─── 11. Dropdown 懸浮面板 ─── */
-html:not(.dark).theme-aurum .shadow-dropdown {
-  background: rgba(224, 229, 236, 0.96) !important;
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(126, 34, 206, 0.2) !important;
+/* ─── 11. Dropdown 懸浮面板與 Floating Island 光暈影線 ─── */
+html:not(.dark).theme-aurum .shadow-dropdown,
+html:not(.dark).theme-aurum .floating-island {
+  background: rgba(238, 242, 246, 0.95) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(126, 34, 206, 0.22) !important;
   box-shadow:
-    0 12px 32px -8px rgba(163, 177, 198, 0.8),
-    0 0 25px -5px rgba(126, 34, 206, 0.15) !important;
+    0 18px 45px -10px rgba(163, 177, 198, 0.65),
+    0 0 30px -4px rgba(126, 34, 206, 0.18),
+    0 0 15px -2px rgba(255, 215, 0, 0.12) !important;
 }
-html.dark.theme-aurum .shadow-dropdown {
-  background: rgba(14, 16, 26, 0.96) !important;
-  backdrop-filter: blur(16px);
+html.dark.theme-aurum .shadow-dropdown,
+html.dark.theme-aurum .floating-island {
+  background: rgba(18, 20, 30, 0.96) !important;
+  backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 215, 0, 0.25) !important;
   box-shadow:
-    0 12px 40px -8px rgba(0, 0, 0, 0.9),
-    0 0 30px -5px rgba(168, 85, 247, 0.25) !important;
+    0 20px 50px -10px rgba(0, 0, 0, 0.9),
+    0 0 35px -5px rgba(168, 85, 247, 0.28),
+    0 0 20px -3px rgba(255, 215, 0, 0.15) !important;
 }
 
 /* ─── Crypto Marquee Animation ─── */

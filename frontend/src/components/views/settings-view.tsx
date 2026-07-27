@@ -12,6 +12,7 @@ import {
   Loader2,
   Server,
   Activity,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,7 +23,17 @@ interface HealthStatus {
   timestamp: string;
 }
 
-export function SettingsView() {
+type AccentTheme = "classic" | "aurum";
+
+interface SettingsViewProps {
+  accentTheme?: AccentTheme;
+  onAccentThemeChange?: (theme: AccentTheme) => void;
+}
+
+export function SettingsView({
+  accentTheme = "classic",
+  onAccentThemeChange,
+}: SettingsViewProps) {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -138,6 +149,79 @@ export function SettingsView() {
               </div>
             </div>
           )}
+        </section>
+
+        {/* Section 0.5: Appearance / Accent Theme */}
+        <section className="ai-card rounded-2xl border border-outline-variant bg-surface-container-lowest p-6 space-y-4">
+          <div className="border-b border-outline-variant pb-3">
+            <div className="flex items-center gap-2">
+              <Palette className="h-5 w-5 text-primary" />
+              <h3 className="font-bold text-headline-md text-primary">
+                外觀 · 個人化主題
+              </h3>
+            </div>
+            <p className="text-body-md text-secondary mt-1">
+              選擇介面的強調色主題。不影響亮 / 暗色模式，兩者可自由組合。
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => onAccentThemeChange?.("classic")}
+              className={`rounded-xl border-[1.5px] p-4 text-left transition-colors ${
+                accentTheme === "classic"
+                  ? "border-primary"
+                  : "border-outline-variant hover:border-outline"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-[12.5px] font-bold text-primary">經典黑白</span>
+                <span
+                  className={`h-4 w-4 rounded-full border-2 relative ${
+                    accentTheme === "classic" ? "border-primary" : "border-outline-variant"
+                  }`}
+                >
+                  {accentTheme === "classic" && (
+                    <span className="absolute inset-[2px] rounded-full bg-primary" />
+                  )}
+                </span>
+              </div>
+              <div className="flex gap-1">
+                <span className="h-4 w-4 rounded bg-on-surface" />
+                <span className="h-4 w-4 rounded bg-secondary" />
+                <span className="h-4 w-4 rounded border border-outline-variant" />
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onAccentThemeChange?.("aurum")}
+              className={`rounded-xl border-[1.5px] p-4 text-left transition-colors ${
+                accentTheme === "aurum"
+                  ? "border-accent"
+                  : "border-outline-variant hover:border-outline"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-[12.5px] font-bold text-primary">Aurum 金紫</span>
+                <span
+                  className={`h-4 w-4 rounded-full border-2 relative ${
+                    accentTheme === "aurum" ? "border-accent" : "border-outline-variant"
+                  }`}
+                >
+                  {accentTheme === "aurum" && (
+                    <span className="absolute inset-[2px] rounded-full bg-accent" />
+                  )}
+                </span>
+              </div>
+              <div className="flex gap-1">
+                <span className="h-4 w-4 rounded" style={{ background: "#F5B93D" }} />
+                <span className="h-4 w-4 rounded" style={{ background: "#A855F7" }} />
+                <span className="h-4 w-4 rounded" style={{ background: "#F5B93D66" }} />
+              </div>
+            </button>
+          </div>
         </section>
 
         {/* Section 1: Security & Injection Defense */}

@@ -37,6 +37,11 @@ const config: Config = {
           "fixed-variant": "#3f465c",
         },
         "inverse-primary": "#bec6e0",
+        accent: {
+          DEFAULT: "var(--accent)",
+          2: "var(--accent-2)",
+        },
+        "on-accent": "var(--on-accent)",
         secondary: {
           DEFAULT: "#505f76",
           container: "#d0e1fb",

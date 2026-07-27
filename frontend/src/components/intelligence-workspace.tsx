@@ -51,6 +51,26 @@ export function IntelligenceWorkspace() {
     });
   }
 
+  /* ── Accent Theme State (personalization) ──
+     Orthogonal to light/dark mode — this only swaps the `--accent`/
+     `--accent-2` CSS variables that a small set of brand-accent surfaces
+     read (send button, AI avatar, active nav, logo mark). */
+  const [accentTheme, setAccentThemeState] = useState<"classic" | "aurum">("classic");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("accent-theme");
+    if (saved === "aurum") {
+      setAccentThemeState("aurum");
+      document.documentElement.classList.add("theme-aurum");
+    }
+  }, []);
+
+  function setAccentTheme(next: "classic" | "aurum") {
+    setAccentThemeState(next);
+    document.documentElement.classList.toggle("theme-aurum", next === "aurum");
+    localStorage.setItem("accent-theme", next);
+  }
+
   /* ── ReAct Agent State ── */
   const [asset, setAsset] = useState<Asset>("BTC");
   const [question, setQuestion] = useState(
@@ -93,6 +113,7 @@ export function IntelligenceWorkspace() {
     setRunning(true);
     setError("");
     setSubmittedQuestion(currentQuestion);
+    setQuestion("");
     setEvents([]);
     setReport(null);
     setRemaining(MAX_SECONDS);
@@ -294,7 +315,12 @@ export function IntelligenceWorkspace() {
       case "reports":
         return <ReportsView />;
       case "settings":
-        return <SettingsView />;
+        return (
+          <SettingsView
+            accentTheme={accentTheme}
+            onAccentThemeChange={setAccentTheme}
+          />
+        );
       case "workspace":
       default:
         return (

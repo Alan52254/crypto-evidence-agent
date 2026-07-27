@@ -416,12 +416,12 @@ async def analyse(
                 "unavailable" if res is None else f"{len(res)} 項證據",
                 tuple(item.id for item in res) if res else (),
             )
-            for inv, res in zip(decision.invocations, results, strict=True)
+            for inv, res in zip(valid_invocations, results, strict=True)
         )
         attempts = attempts + tuple(fresh_attempts)
         gathered = merge_independent_evidence([*gathered, *fresh])
         gap_after = evidence_gap(gathered, now=as_of_ref)
-        called = ", ".join(inv.tool for inv in decision.invocations)
+        called = ", ".join(inv.tool for inv in valid_invocations)
         recorder.record(
             TraceNodeKind.GATHER,
             f"自 {called} 蒐集到 {len(fresh)} 項證據",

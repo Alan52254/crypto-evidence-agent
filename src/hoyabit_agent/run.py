@@ -395,6 +395,7 @@ async def analyse(
         assessment,
         as_of=request.as_of_date,
         unavailable_facets=requirement.unavailable_facets,
+        boundary_notes=requirement.boundary_notes,
     )
     return AnalysisOutcome(
         run_id=identifier,
@@ -460,6 +461,7 @@ def _assemble(
     *,
     as_of: date | None = None,
     unavailable_facets: frozenset[Facet] = frozenset(),
+    boundary_notes: tuple[str, ...] = (),
 ) -> Report:
     """組裝階段 —— 判斷先經帳本驗證，再渲染。
 
@@ -520,6 +522,9 @@ def _assemble(
         f"{facet.value} 面資料不可得（回測模式僅有資料集 OHLCV，無合規的即時來源）"
         for facet in sorted(unavailable_facets, key=lambda f: f.value)
     ]
+    # 邊界聲明（未命中已知題型、預測題劃界）—— 同樣是資料/方法論層級,
+    # 不含被拒判斷原文,可安全進報告本體（見 question.EvidenceRequirement）。
+    report_limitations.extend(boundary_notes)
     if assessment is not None:
         report_limitations.extend(
             f"未關閉的證據缺口：{gap.detail}" for gap in assessment.blocking_gaps

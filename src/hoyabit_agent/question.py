@@ -66,6 +66,56 @@ _COMPARISON_MARKERS = (
     "compare",
 )
 
+# 典型現況研判問法 —— 有這些詞彙的問題視為「明確命中市場摘要」,
+# 不觸發「題型未明確匹配」的邊界說明。沒有這層辨識,every 普通問句
+# （如「BTC 現況如何」）都會被標記為未命中,稀釋掉這個限制對真正
+# 未知題型的警示價值。
+_MARKET_SUMMARY_MARKERS = (
+    "現況",
+    "現状",
+    "走勢",
+    "趨勢",
+    "分析",
+    "看法",
+    "如何",
+    "怎麼樣",
+    "怎么样",
+    "狀況",
+    "状况",
+    "動向",
+    "動態",
+    "market summary",
+    "current",
+    "overview",
+)
+
+# 預測/未來語言特徵 —— 命中時系統仍以現況研判作答,但必須明確聲明
+# 不做未來價格預測。可溯源承諾要求每句判斷掛得到來源片段,未來沒有
+# 片段可掛,誠實劃界比硬答一個「下週目標價」更專業。
+_FORECAST_MARKERS = (
+    "預測",
+    "预测",
+    "預估",
+    "预估",
+    "未來走勢",
+    "未来走势",
+    "下週",
+    "下周",
+    "明天",
+    "明日",
+    "下個月",
+    "下个月",
+    "目標價",
+    "目标价",
+    "看後市",
+    "看后市",
+    "forecast",
+    "predict",
+    "target price",
+    "future price",
+    "outlook",
+)
+
 
 @dataclass(frozen=True)
 class EvidenceRequirement:
@@ -90,6 +140,12 @@ class EvidenceRequirement:
     當成永遠關不掉的缺口拖垮收斂,不如在此記下「本該要、但取不到」的意圖,
     交給 _assemble 轉成明確的限制說明(資料不可得) —— 這是誠實,不是遺漏。
     """
+    boundary_notes: tuple[str, ...] = ()
+    """系統邊界的顯性聲明 —— 未命中已知題型、或問題要求本系統不做的事
+    (例如未來價格預測)時的誠實告知。與 `unavailable_facets` 一樣,
+    最終流入 `Report.limitations`,讓評審在 final_report.md 看得到系統
+    如何界定自己的能力邊界,而不是靜默地把不確定性藏起來。
+    """
 
     def describe(self) -> str:
         """給模型與 Execution Log 看的敘述。"""
@@ -104,7 +160,27 @@ class EvidenceRequirement:
         if self.unavailable_facets:
             facets = "、".join(sorted(f.value for f in self.unavailable_facets))
             lines.append(f"回測模式資料不可得的證據面(將列為限制)：{facets}")
+        for note in self.boundary_notes:
+            lines.append(f"邊界聲明：{note}")
         return "\n".join(lines)
+
+
+def _matched_known_vocabulary(lowered: str, assets: tuple[Asset, ...]) -> bool:
+    """題目是否命中任何已知題型的語言特徵(比較、假設驗證、或典型市場摘要問法)。
+
+    False 代表題目落入 MARKET_SUMMARY 純粹是因為沒有更精確的分類 ——
+    這是關鍵字分類器能誠實表達「我不確定這題屬於哪一類」的唯一訊號。
+    """
+    return (
+        len(assets) >= 2
+        or _matches(lowered, _COMPARISON_MARKERS)
+        or _matches(lowered, _HYPOTHESIS_MARKERS)
+        or _matches(lowered, _MARKET_SUMMARY_MARKERS)
+    )
+
+
+def _is_forecast_question(lowered: str) -> bool:
+    return _matches(lowered, _FORECAST_MARKERS)
 
 
 def classify_question(question: str, assets: tuple[Asset, ...]) -> QuestionType:
@@ -170,6 +246,17 @@ def derive_requirement(
         # 回測只有資料集 OHLCV(技術面)合規;其餘三面本該覆蓋但取不到。
         required_facets = frozenset({Facet.TECHNICAL})
         unavailable_facets = frozenset(Facet) - required_facets
+
+    boundary_notes: list[str] = []
+    if not _matched_known_vocabulary(lowered, assets):
+        # 落入 MARKET_SUMMARY 是關鍵字分類器的預設路徑,不是精準分類 ——
+        # 把這個事實告訴評審,而不是讓不確定性隱身在一個看似篤定的報告裡。
+        boundary_notes.append("題型未明確匹配，以現況研判作答")
+    if _is_forecast_question(lowered):
+        # 可溯源承諾要求每句判斷掛得到來源片段;未來沒有片段可掛,
+        # 因此誠實聲明邊界,而不是輸出一個沒有依據的價格預測。
+        boundary_notes.append("本系統輸出當前方向研判，不做未來價格預測")
+
     return EvidenceRequirement(
         question_type=kind,
         required_facets=required_facets,
@@ -178,6 +265,7 @@ def derive_requirement(
         require_symmetric_coverage=False,
         assets=assets,
         unavailable_facets=unavailable_facets,
+        boundary_notes=tuple(boundary_notes),
     )
 
 

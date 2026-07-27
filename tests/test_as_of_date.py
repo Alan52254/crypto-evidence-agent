@@ -27,6 +27,40 @@ from hoyabit_agent.tools import assess_confidence
 DATASET_CUTOFF = date(2026, 5, 31)
 
 
+def test_recognized_market_summary_question_has_no_unmatched_boundary_note() -> None:
+    """典型的現況研判問題(命中已知市場摘要詞彙)不該被標「題型未明確匹配」。
+
+    否則這個限制會出現在每一次最普通的分析請求上,稀釋掉它對真正
+    未知題型的警示價值。
+    """
+    requirement = derive_requirement("BTC 現況如何", (Asset.BTC,))
+
+    assert "題型未明確匹配，以現況研判作答" not in requirement.boundary_notes
+
+
+def test_unrecognized_phrasing_gets_unmatched_boundary_note() -> None:
+    """不屬於比較、假設驗證、也不像典型市場摘要問法的題目,必須誠實標記。
+
+    這把「不知道主辦方會問什麼」從風險轉成防護網:任何未預期的題型
+    都安全落地為市場摘要,並明確告知評審這是預設路徑,而非精準分類。
+    """
+    requirement = derive_requirement("BTC 適合當退休金配置嗎", (Asset.BTC,))
+
+    assert "題型未明確匹配，以現況研判作答" in requirement.boundary_notes
+
+
+def test_forecast_question_gets_forecast_boundary_note() -> None:
+    """預測未來走勢的題目,必須明確聲明系統不做未來價格預測。
+
+    系統的可溯源承諾要求每句判斷掛得到來源片段;未來沒有片段可掛,
+    因此誠實劃界比硬答一個「下週目標價」更專業。
+    """
+    requirement = derive_requirement("請預測 BTC 下週的走勢", (Asset.BTC,))
+
+    assert requirement.question_type is QuestionType.MARKET_SUMMARY
+    assert "本系統輸出當前方向研判，不做未來價格預測" in requirement.boundary_notes
+
+
 def test_live_market_summary_requires_all_four_facets() -> None:
     """即時模式:市場摘要維持四面向覆蓋(既有行為不變)。"""
     requirement = derive_requirement(
@@ -276,6 +310,36 @@ async def test_backtest_regime_never_calls_or_offers_a_live_only_source() -> Non
     # 報告只含合規來源的證據。
     assert outcome.report is not None
     assert all(item.facet is not Facet.POSITIONING for item in outcome.report.evidence)
+
+
+@pytest.mark.asyncio
+async def test_forecast_question_boundary_note_reaches_report_limitations() -> None:
+    """預測型問題的邊界聲明必須進到 Report.limitations,而非只留在 trace。
+
+    這是評審讀 final_report.md 會看到的最後一哩:系統誠實聲明「不做預測」,
+    而不是靜默地給出一個看似篤定、實則毫無依據的方向研判。
+    """
+    from hoyabit_agent.domain import DraftClaim
+    from hoyabit_agent.run import analyse
+    from hoyabit_agent.testing import ScriptedModel, StaticSource
+
+    day = date(2026, 5, 31)
+    ev = _evidence_on(day, Facet.TECHNICAL, 0.6, "dataset:BTC")
+    source = StaticSource([ev], name="market_dataset_context")
+    model = ScriptedModel(
+        plans=[("market_dataset_context", "深挖技術面")],
+        claims=[DraftClaim("技術面偏多", (ev.id,), Facet.TECHNICAL)],
+    )
+
+    outcome = await analyse(
+        AnalysisRequest("BTC", "請預測 BTC 下週的走勢", as_of_date=day),
+        [source],
+        model,
+        today=date(2026, 7, 27),
+    )
+
+    assert outcome.report is not None
+    assert "本系統輸出當前方向研判，不做未來價格預測" in outcome.report.limitations
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 from hoyabit_agent.arguments import bounded_int
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.ingest.dataset import (
     DATASET_END_DATE,
     load_asset_windows,
@@ -37,6 +37,11 @@ class CsvHistoricalSource:
         self._dataset_dir = dataset_dir or DEFAULT_DATASET_DIR
         self._documents: dict[Asset, list[MarketDocument]] = {}
         self._loaded = False
+
+    @property
+    def supported_regimes(self) -> frozenset[AnalysisRegime]:
+        """只在 BACKTEST 模式下使用 —— 資料截止於 2026-05-31，LIVE 模式用此來源會有 look-ahead bias。"""
+        return frozenset({AnalysisRegime.BACKTEST})
 
     def _ensure_loaded(self) -> None:
         if self._loaded:

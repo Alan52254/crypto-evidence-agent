@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.seams import Arguments, ToolSpec
 
 COINGECKO_API_KEY_ENV = "COINGECKO_API_KEY"
@@ -39,6 +39,11 @@ class CoinGeckoSource:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client
         self._api_key = os.environ.get(COINGECKO_API_KEY_ENV, "").strip()
+
+    @property
+    def supported_regimes(self) -> frozenset[AnalysisRegime]:
+        """只在 LIVE 模式下使用 —— 即時 API 呼叫，BACKTEST 模式不得呼叫以避免未來資料污染。"""
+        return frozenset({AnalysisRegime.LIVE})
 
     @property
     def spec(self) -> ToolSpec:

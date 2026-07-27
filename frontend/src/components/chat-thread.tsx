@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BrainCircuit,
   SearchCheck,
@@ -9,6 +9,8 @@ import {
   TrendingDown,
   Minus,
   ExternalLink,
+  Copy,
+  Check,
 } from "lucide-react";
 import type {
   AnalysisReport,
@@ -255,6 +257,36 @@ function ThinkingDots() {
 
 /* ─────────────── Report Response ─────────────── */
 
+function CopyButton({ text, className = "" }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* silent */
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-all ${
+        copied
+          ? "bg-emerald-100 text-emerald-700"
+          : "text-secondary hover:bg-surface-container hover:text-primary"
+      } ${className}`}
+      title="複製內容"
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? "已複製" : "複製"}
+    </button>
+  );
+}
+
 function ReportResponse({
   report,
   onEvidenceClick,
@@ -340,24 +372,27 @@ function ReportResponse({
               <p className="text-body-md leading-relaxed text-primary font-medium">
                 {claim.text}
               </p>
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {claim.evidence_ids.map((id) => {
-                  const evidence = report.evidence.find(
-                    (e) => e.evidence_id === id,
-                  );
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      disabled={!evidence}
-                      onClick={() => evidence && onEvidenceClick(evidence)}
-                      className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-surface-container-lowest px-2 py-0.5 font-mono text-[10px] font-semibold text-primary transition-colors hover:bg-primary hover:text-on-primary disabled:opacity-40"
-                    >
-                      <ExternalLink className="h-2.5 w-2.5" />
-                      {id}
-                    </button>
-                  );
-                })}
+              <div className="mt-2.5 flex items-end justify-between">
+                <div className="flex flex-wrap gap-1.5">
+                  {claim.evidence_ids.map((id) => {
+                    const evidence = report.evidence.find(
+                      (e) => e.evidence_id === id,
+                    );
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        disabled={!evidence}
+                        onClick={() => evidence && onEvidenceClick(evidence)}
+                        className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-surface-container-lowest px-2 py-0.5 font-mono text-[10px] font-semibold text-primary transition-colors hover:bg-primary hover:text-on-primary disabled:opacity-40"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                        {id}
+                      </button>
+                    );
+                  })}
+                </div>
+                <CopyButton text={claim.text} />
               </div>
             </article>
           ))}
@@ -402,6 +437,12 @@ function ReportResponse({
               [&_p]:text-body-md [&_p]:leading-relaxed [&_p]:my-2"
             dangerouslySetInnerHTML={{ __html: markdownToHtml(report.enhanced_report_md) }}
           />
+          <div className="mt-4 flex justify-end border-t border-outline-variant pt-3">
+            <CopyButton
+              text={report.enhanced_report_md}
+              className="px-3 py-1.5 text-[11px] border border-outline-variant rounded-lg"
+            />
+          </div>
         </details>
       )}
     </div>

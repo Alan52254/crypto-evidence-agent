@@ -237,7 +237,7 @@ async def analyse(
     )
     for result in prefetch_results:
         if isinstance(result, tuple):
-            gathered = merge_independent_evidence(gathered, result)
+            gathered = merge_independent_evidence((*gathered, *result))
 
     assessment = gap_rules.assess(gathered, requirement)
     used_fallback_plan = False

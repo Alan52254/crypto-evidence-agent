@@ -35,10 +35,12 @@ async def build_competition_sources(
     - 基本面：CoinDesk/CT + Blocktempo/Blockworks + 官方公告
     - 情緒面：新聞文本打分（中英文交叉）
     """
+    from hoyabit_agent.sources.csv_historical import CsvHistoricalSource
     from hoyabit_agent.sources.rss_extended import (
         ExtendedNewsSource,
         OfficialAnnouncementSource,
     )
+    from hoyabit_agent.sources.coingecko import CoinGeckoSource
 
     sources: list[EvidenceSource] = [
         BinanceSpotSource(client),
@@ -46,10 +48,14 @@ async def build_competition_sources(
         NewsRssSource(client, labeller=model),
         ExtendedNewsSource(client, labeller=model),
         OfficialAnnouncementSource(client, labeller=model),
+        CoinGeckoSource(client),
     ]
+    # 優先用 pgvector 版本（完整語意檢索）；連不上就用 CSV 直讀版
     historical = await build_market_evidence_source(client)
     if historical is not None:
         sources.append(historical)
+    else:
+        sources.append(CsvHistoricalSource())
     return sources
 
 

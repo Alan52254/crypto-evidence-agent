@@ -121,10 +121,24 @@ class Claim:
 
 @dataclass(frozen=True)
 class Confidence:
-    """信心度 —— 證據面之間的一致程度（ADR 0002），而非模型的自我感覺。"""
+    """信心度 —— 五維加權評估（ADR 0002 + 競賽規格）。
+
+    權重：來源品質25% + 覆蓋25% + 時效20% + 一致性20% + 完整性10%
+    """
 
     value: float
     facet_stances: Mapping[Facet, Stance]
+    # 五維分解分數 — 讓報告能呈現每個維度的貢獻
+    independence: float = 0.0
+    """來源品質 (25%) — 基於可信度加權的獨立來源數"""
+    coverage: float = 0.0
+    """覆蓋 (25%) — 四個證據面中有多少有證據"""
+    freshness: float = 0.0
+    """時效 (20%) — 最新證據距今多久"""
+    agreement: float = 0.0
+    """一致性 (20%) — 有表態的面之間方向是否一致"""
+    completeness: float = 0.0
+    """完整性 (10%) — 證據總數是否足夠"""
 
 
 class Insufficiency(Enum):
@@ -246,11 +260,26 @@ class Report:
     命題明確要求「對不確定性與限制的清楚說明」,所以限制是一等輸出,
     必須進到報告本體讓評審看得到,而非只留在推論軌跡裡。
     """
+    analysis_window_start: datetime | None = None
+    """分析涵蓋的最早時間點 —— 由證據的 retrieved_at 與內容時間推導。"""
+    analysis_window_end: datetime | None = None
+    """分析涵蓋的最晚時間點 —— 由證據的 retrieved_at 推導。"""
 
     def to_markdown(self) -> str:
         """由已過濾的結構化判斷渲染 —— 不是從散文剪裁出來的。"""
         lines = [f"# {self.asset.value} 分析報告", "", f"**分析題目**：{self.question}", ""]
         lines.append(f"**方向**：{self.stance.value}")
+
+        # 時間窗 —— 讓使用者知道這份分析涵蓋的時間範圍
+        if self.analysis_window_start and self.analysis_window_end:
+            lines.append(
+                f"**分析涵蓋時間窗**：{self.analysis_window_start.strftime('%Y-%m-%d %H:%M UTC')}"
+                f" ~ {self.analysis_window_end.strftime('%Y-%m-%d %H:%M UTC')}"
+            )
+        elif self.analysis_window_end:
+            lines.append(
+                f"**資料截至**：{self.analysis_window_end.strftime('%Y-%m-%d %H:%M UTC')}"
+            )
 
         if isinstance(self.confidence, InsufficientEvidence):
             present = "、".join(sorted(f.value for f in self.confidence.facets_present)) or "無"
@@ -268,6 +297,13 @@ class Report:
                 )
         else:
             lines.append(f"**信心度**：{self.confidence.value:.2f}（證據面之間的一致程度）")
+            lines.append(
+                f"  - 來源品質：{self.confidence.independence:.0%}（權重25%）"
+                f"　覆蓋：{self.confidence.coverage:.0%}（25%）"
+                f"　時效：{self.confidence.freshness:.0%}（20%）"
+                f"　一致性：{self.confidence.agreement:.0%}（20%）"
+                f"　完整性：{self.confidence.completeness:.0%}（10%）"
+            )
 
         # 四個面的傾向**不論算不算得出信心度都要呈現** —— 算不出來時更需要，
         # 因為讀者正是在那個情況下要看出是誰沉默、誰根本沒查到證據。

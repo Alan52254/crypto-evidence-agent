@@ -87,12 +87,24 @@ def _executive_summary(report: Report) -> str:
 |------|------|
 | 研判方向 | **{direction}** {emoji} |
 | {confidence_str} | |
+| 分析時間窗 | {_format_window(report)} |
 | 判斷條目 | {len(report.claims)} 則（已通過引用檢核） |
 | 證據項數 | {len(report.evidence)} 項（來自獨立來源） |
 | 被丟棄判斷 | {len(report.dropped_claims)} 則（未通過引用檢核） |
 
 ### 各面向判定
 {facet_summary}"""
+
+
+def _format_window(report: Report) -> str:
+    """格式化時間窗為人類可讀字串。"""
+    if report.analysis_window_start and report.analysis_window_end:
+        start = report.analysis_window_start.strftime("%Y-%m-%d %H:%M UTC")
+        end = report.analysis_window_end.strftime("%Y-%m-%d %H:%M UTC")
+        return f"{start} ~ {end}"
+    if report.analysis_window_end:
+        return f"截至 {report.analysis_window_end.strftime('%Y-%m-%d %H:%M UTC')}"
+    return "未知"
 
 
 def _layered_claims(report: Report) -> str:

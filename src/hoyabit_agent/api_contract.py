@@ -32,7 +32,32 @@ def outcome_payload(outcome: AnalysisOutcome) -> dict[str, Any]:
             if not isinstance(confidence, Confidence)
             else None
         ),
-        "cutoff": "2026-05-31 UTC",
+        "confidence_breakdown": (
+            {
+                "independence": confidence.independence,
+                "coverage": confidence.coverage,
+                "freshness": confidence.freshness,
+                "agreement": confidence.agreement,
+                "completeness": confidence.completeness,
+            }
+            if isinstance(confidence, Confidence)
+            else None
+        ),
+        "cutoff": (
+            report.analysis_window_end.strftime("%Y-%m-%d %H:%M UTC")
+            if report.analysis_window_end
+            else "2026-05-31 UTC"
+        ),
+        "analysis_window_start": (
+            report.analysis_window_start.isoformat()
+            if report.analysis_window_start
+            else None
+        ),
+        "analysis_window_end": (
+            report.analysis_window_end.isoformat()
+            if report.analysis_window_end
+            else None
+        ),
         "facet_stances": {
             facet.value: stance.value for facet, stance in confidence.facet_stances.items()
         },

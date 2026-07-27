@@ -57,7 +57,7 @@ from hoyabit_agent.tools import (
 )
 
 DEFAULT_BUDGET_SECONDS = 900.0  # 15 分鐘 —— 上限，不是目標
-DEFAULT_IO_TIMEOUT_SECONDS = 15.0
+DEFAULT_IO_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_ITERATIONS = 6
 ASSEMBLY_RESERVE_SECONDS = 120.0
 """保留給撰寫、驗證與組裝的時間。
@@ -278,6 +278,8 @@ async def analyse(
             gap_state=gap,
             requirement_brief=requirement.describe(),
             gap_brief=assessment.describe(),
+            analysis_timestamp=datetime.now(UTC).isoformat(),
+
         )
         decision = await model.plan(context, tools)
 
@@ -567,6 +569,16 @@ def _assemble(
         evidence_ids=tuple(item.id for item in gathered),
     )
 
+    # 從證據的 retrieved_at 推導時間窗 —— 使用者據此判斷報告的時效性
+    all_timestamps = [
+        excerpt.retrieved_at
+        for item in gathered
+        for excerpt in item.excerpts
+        if excerpt.retrieved_at is not None
+    ]
+    window_start = min(all_timestamps) if all_timestamps else None
+    window_end = max(all_timestamps) if all_timestamps else None
+
     return Report(
         asset=asset,
         stance=stance,
@@ -576,6 +588,8 @@ def _assemble(
         evidence=gathered,
         question=question,
         limitations=tuple(report_limitations),
+        analysis_window_start=window_start,
+        analysis_window_end=window_end,
     )
 
 

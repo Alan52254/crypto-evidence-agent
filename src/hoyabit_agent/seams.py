@@ -92,6 +92,9 @@ class GatherContext:
     與 `gap`／`gap_state` 並存而非取代：前兩者是通用的面向缺口，
     這一項才帶得出「缺反方」「兩邊不對稱」這類題型專屬的缺口。
     """
+    analysis_timestamp: str = ""
+    """本次分析的 UTC 時間戳（ISO 格式）。讓模型知道「現在幾點」，
+    以便正確判斷證據的新鮮度。空字串代表未指定。"""
 
 
 @dataclass(frozen=True)

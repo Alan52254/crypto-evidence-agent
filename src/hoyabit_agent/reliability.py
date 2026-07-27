@@ -37,7 +37,8 @@ class ReliabilityTier(Enum):
 # 依 source_id 前綴分級。source_id 的格式由各證據源決定，
 # 前綴是我們唯一能穩定依賴的部分。
 _HIGH_PREFIXES = (
-    "binance",  # 交易所原始端點
+    "binance",  # 交易所原始端點（舊格式，保留相容性）
+    "bnc-",  # 交易所原始端點（BNC-SPOT-*, BNC-PERP-*）
     "dataset",  # 競賽 OHLCV
     "official",  # 官方公告來源
     "ethereum-blog",
@@ -48,6 +49,7 @@ _MEDIUM_PREFIXES = (
     "cointelegraph",
     "blocktempo",
     "blockworks",
+    "coingecko",
 )
 
 

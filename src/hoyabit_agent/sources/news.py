@@ -249,7 +249,7 @@ class NewsRssSource:
     async def _read(self, url: str) -> str | None:
         """單一 feed 讀取。失效回傳 None —— 一個來源掛掉不該拖垮其他來源。"""
         try:
-            response = await self._client.get(url)
+            response = await self._client.get(url, follow_redirects=True)
         except httpx.HTTPError:
             return None
         return response.text if response.status_code == 200 else None

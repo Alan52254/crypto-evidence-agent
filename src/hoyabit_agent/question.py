@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from hoyabit_agent.domain import Asset, Facet
+from hoyabit_agent.domain import AnalysisRegime, Asset, Facet
 
 
 class QuestionType(Enum):
@@ -83,6 +83,13 @@ class EvidenceRequirement:
     require_symmetric_coverage: bool
     """為真時，兩個標的的證據面數量必須對齊 —— 比較分析的核心要求。"""
     assets: tuple[Asset, ...]
+    unavailable_facets: frozenset[Facet] = frozenset()
+    """本題型原該覆蓋、但在當前分析模式下取不到的證據面。
+
+    回測模式只有 OHLCV(技術面)可用,籌碼/基本/情緒面無合規來源。與其把它們
+    當成永遠關不掉的缺口拖垮收斂,不如在此記下「本該要、但取不到」的意圖,
+    交給 _assemble 轉成明確的限制說明(資料不可得) —— 這是誠實,不是遺漏。
+    """
 
     def describe(self) -> str:
         """給模型與 Execution Log 看的敘述。"""
@@ -94,6 +101,9 @@ class EvidenceRequirement:
         if self.require_symmetric_coverage:
             names = "、".join(a.value for a in self.assets)
             lines.append(f"**{names} 兩邊的證據面覆蓋必須對稱** —— 不可一邊詳一邊略。")
+        if self.unavailable_facets:
+            facets = "、".join(sorted(f.value for f in self.unavailable_facets))
+            lines.append(f"回測模式資料不可得的證據面(將列為限制)：{facets}")
         return "\n".join(lines)
 
 
@@ -117,11 +127,17 @@ def derive_requirement(
     question: str,
     assets: tuple[Asset, ...],
     question_type: QuestionType | None = None,
+    *,
+    regime: AnalysisRegime = AnalysisRegime.LIVE,
 ) -> EvidenceRequirement:
     """由題型推導證據需求。
 
     比較題刻意**不要求四面向全滿**：兩個標的各補四面向會吃掉整個
     十五分鐘預算。對稱性比廣度更能回答「誰比較強」。
+
+    `regime` 決定資料現實:回測模式只有 OHLCV(技術面)有合規來源,籌碼/基本/
+    情緒面取不到。市場摘要題在回測下改為只深挖技術面,另三面記入
+    `unavailable_facets`,交由 _assemble 轉成限制說明,而不是拖垮收斂的死缺口。
     """
     kind = question_type or classify_question(question, assets)
     lowered = question.casefold()
@@ -148,13 +164,20 @@ def derive_requirement(
             assets=assets,
         )
 
+    required_facets = frozenset(Facet)
+    unavailable_facets: frozenset[Facet] = frozenset()
+    if regime is AnalysisRegime.BACKTEST:
+        # 回測只有資料集 OHLCV(技術面)合規;其餘三面本該覆蓋但取不到。
+        required_facets = frozenset({Facet.TECHNICAL})
+        unavailable_facets = frozenset(Facet) - required_facets
     return EvidenceRequirement(
         question_type=kind,
-        required_facets=frozenset(Facet),
+        required_facets=required_facets,
         minimum_independent_sources=2,
         require_both_directions=False,
         require_symmetric_coverage=False,
         assets=assets,
+        unavailable_facets=unavailable_facets,
     )
 
 

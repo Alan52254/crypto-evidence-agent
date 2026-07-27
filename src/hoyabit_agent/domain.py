@@ -9,8 +9,9 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
+from typing import ClassVar
 
 
 class Asset(Enum):
@@ -238,6 +239,13 @@ class Report:
     dropped_claims: tuple[DraftClaim, ...]
     evidence: tuple[Evidence, ...]
     question: str = "請分析當前市場狀況"
+    limitations: tuple[str, ...] = ()
+    """本次分析明確承認的限制 —— 由分析回合動態計算,不是寫死的清單。
+
+    來源:回測模式取不到的證據面、未關閉的必補缺口、被拒絕/爭議的判斷。
+    命題明確要求「對不確定性與限制的清楚說明」,所以限制是一等輸出,
+    必須進到報告本體讓評審看得到,而非只留在推論軌跡裡。
+    """
 
     def to_markdown(self) -> str:
         """由已過濾的結構化判斷渲染 —— 不是從散文剪裁出來的。"""
@@ -280,6 +288,12 @@ class Report:
         # 被丟棄的判斷刻意**不**渲染進報告本文 —— 它們留在 `dropped_claims`
         # 與推論軌跡中，供軌跡前端呈現給檢視者。報告只呈現站得住的內容。
 
+        # 限制說明是一等輸出 —— 命題要求「對不確定性與限制的清楚說明」，
+        # 這是評審在 final_report.md 讀到的誠實邊界，不可只留在推論軌跡。
+        if self.limitations:
+            lines.extend(["", "## 限制", ""])
+            lines.extend(f"- {line}" for line in self.limitations)
+
         lines.extend(["", "---", "", DISCLAIMER])
         return "\n".join(lines)
 
@@ -289,15 +303,48 @@ class AnalysisRequest:
     """分析請求 —— 對某個幣種發起分析的意圖。
 
     `asset` 刻意是字串：閘門的職責就是把未經驗證的輸入擋在推理之外。
+
+    `as_of_date` 是這次分析的**時間立足點** —— 允許使用資料的最後 UTC 日期,
+    也是全系統的總開關(推導分析模式、過濾合規來源、錨定新鮮度)。
+    未指定時預設為資料集截止日 2026-05-31。
     """
+
+    DATASET_CUTOFF: ClassVar[date] = date(2026, 5, 31)
 
     asset: str
     question: str = "請分析當前市場狀況"
+    as_of_date: date = DATASET_CUTOFF
 
     def __post_init__(self) -> None:
         from hoyabit_agent.sanitizer import sanitize_user_question
 
         object.__setattr__(self, "question", sanitize_user_question(self.question))
+
+
+class AnalysisRegime(Enum):
+    """分析模式 —— 由分析截止日推導出的行為分歧,非獨立輸入。
+
+    後續管線(來源過濾、缺口需求、新鮮度)一律 branch 在這個語意開關上,
+    而不是散落的 `is_live` 布林旗標。
+    """
+
+    BACKTEST = "backtest"
+    """截止日早於今天:只有截止日當下可知的資料合規,live 工具會偷看未來。"""
+
+    LIVE = "live"
+    """截止日不早於今天:即時來源合規。"""
+
+
+def analysis_regime(as_of_date: date, *, today: date) -> AnalysisRegime:
+    """由分析截止日推導分析模式。
+
+    `today` 是**顯式注入的參考點**,刻意不在此讀 `datetime.now()` ——
+    時間是被傳進來的值,不是隱藏的全域副作用。這是「時光機」測試基底的前提:
+    同一組輸入永遠得到同一個模式,CI 不會因為現實時鐘跨過某個門檻而隨機失敗。
+
+    截止日等於今天算 LIVE:「截至今天」可知的資料本就合規,不算偷看未來。
+    """
+    return AnalysisRegime.BACKTEST if as_of_date < today else AnalysisRegime.LIVE
 
 
 @dataclass(frozen=True)
@@ -313,8 +360,10 @@ class AnalysisOutcome:
 __all__ = [
     "DISCLAIMER",
     "AnalysisOutcome",
+    "AnalysisRegime",
     "AnalysisRequest",
     "Asset",
+    "analysis_regime",
     "Claim",
     "ClaimRole",
     "Confidence",

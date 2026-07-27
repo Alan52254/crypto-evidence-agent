@@ -121,7 +121,15 @@ def _to_evidence(document: MarketDocument) -> Evidence:
         url=document.source_file.as_uri()
         if document.source_file.is_absolute()
         else str(document.source_file),
-        retrieved_at=datetime.now(UTC),
+        retrieved_at=datetime(
+            document.as_of_date.year,
+            document.as_of_date.month,
+            document.as_of_date.day,
+            23,
+            59,
+            59,
+            tzinfo=UTC,
+        ),
         locator=f"CSV rows {document.source_row_start}-{document.source_row_end}",
         text=document.embedding_text(),
     )

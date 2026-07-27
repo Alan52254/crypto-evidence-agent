@@ -242,8 +242,218 @@ html.dark .ai-card {
 }
 html.theme-aurum {
   --accent: #f5b93d;
-  --on-accent: #241a02;
+  --on-accent: #050506;
   --accent-2: #a855f7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AURUM 紫金主題 — Linear-inspired Deep Space with Ambient Light
+   琥珀金 (#F5B93D) = 互動與主視覺
+   蘭花紫 (#A855F7) = 氛圍與空間感
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. 深邃夜色底層 ─── */
+html.theme-aurum body {
+  background: #050506;
+  color: #e0e0e4;
+}
+html.theme-aurum .bg-background,
+html.theme-aurum .bg-surface {
+  background-color: #050506 !important;
+}
+html.theme-aurum .bg-surface\/95 {
+  background-color: rgba(5, 5, 6, 0.92) !important;
+  backdrop-filter: blur(12px) saturate(1.4);
+}
+html.theme-aurum .bg-surface-container-lowest {
+  background-color: #0a0a0c !important;
+}
+html.theme-aurum .bg-surface-container-low {
+  background-color: #0f0f12 !important;
+}
+html.theme-aurum .bg-surface-container {
+  background-color: #141418 !important;
+}
+html.theme-aurum .bg-surface-container-high {
+  background-color: #1a1a1f !important;
+}
+html.theme-aurum .bg-surface-container-highest {
+  background-color: #212127 !important;
+}
+
+/* ─── 2. 文字層次 ─── */
+html.theme-aurum .text-primary {
+  color: #f5b93d !important;
+}
+html.theme-aurum .text-on-surface {
+  color: #e0e0e4 !important;
+}
+html.theme-aurum .text-on-surface-variant {
+  color: #8a8f98 !important;
+}
+html.theme-aurum .text-secondary {
+  color: #6b7080 !important;
+}
+html.theme-aurum .text-outline {
+  color: #3d3f47 !important;
+}
+html.theme-aurum .text-on-primary {
+  color: #050506 !important;
+}
+
+/* ─── 3. 邊框 ─── */
+html.theme-aurum * {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+html.theme-aurum .border-outline-variant {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+html.theme-aurum .border-outline-variant\/50 {
+  border-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* ─── 4. 主色塊 ─── */
+html.theme-aurum .bg-primary {
+  background-color: #f5b93d !important;
+}
+html.theme-aurum .bg-primary\/5 {
+  background-color: rgba(245, 185, 61, 0.04) !important;
+}
+html.theme-aurum .bg-primary\/10 {
+  background-color: rgba(245, 185, 61, 0.08) !important;
+}
+
+/* ─── 5. 卡片：邊框亮線 + 擴散陰影 + 紫/金外發光 ─── */
+html.theme-aurum .ai-card {
+  background: linear-gradient(135deg, rgba(20, 20, 24, 0.9), rgba(10, 10, 12, 0.95)) !important;
+  border: 1px solid rgba(245, 185, 61, 0.08) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 2px 8px -2px rgba(0, 0, 0, 0.6),
+    0 0 20px -8px rgba(168, 85, 247, 0.08);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+html.theme-aurum .ai-card:hover {
+  border-color: rgba(245, 185, 61, 0.2) !important;
+  box-shadow:
+    0 0 0 1px rgba(245, 185, 61, 0.1),
+    0 4px 16px -4px rgba(0, 0, 0, 0.7),
+    0 0 30px -10px rgba(168, 85, 247, 0.15),
+    0 0 20px -6px rgba(245, 185, 61, 0.06);
+  transform: translateY(-1px);
+}
+
+/* ─── 6. Hover 微交互 (200-300ms expo-out) ─── */
+html.theme-aurum button,
+html.theme-aurum a {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+html.theme-aurum .hover\:bg-surface-container-low:hover {
+  background-color: rgba(245, 185, 61, 0.05) !important;
+}
+
+/* ─── 7. 漸層文字 (Gradient Text) ─── */
+html.theme-aurum .text-headline-lg,
+html.theme-aurum .text-headline-md,
+html.theme-aurum h1,
+html.theme-aurum h2,
+html.theme-aurum h3 {
+  background: linear-gradient(180deg, #ffffff 0%, rgba(255, 255, 255, 0.7) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+html.theme-aurum .text-primary.text-headline-lg,
+html.theme-aurum .text-primary.text-headline-md,
+html.theme-aurum .font-bold.text-primary {
+  background: linear-gradient(180deg, #f5b93d 0%, #d4982e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── 8. 蘭花紫氛圍光暈 (Ambient Blobs) ─── */
+html.theme-aurum .bg-background::before,
+html.theme-aurum .bg-surface::before {
+  content: "";
+  position: fixed;
+  top: -20%;
+  left: -10%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(ellipse at center, rgba(168, 85, 247, 0.06) 0%, transparent 70%);
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  animation: aurum-drift 25s ease-in-out infinite alternate;
+}
+html.theme-aurum .bg-background::after,
+html.theme-aurum .bg-surface::after {
+  content: "";
+  position: fixed;
+  bottom: -15%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(ellipse at center, rgba(245, 185, 61, 0.04) 0%, transparent 70%);
+  filter: blur(120px);
+  pointer-events: none;
+  z-index: 0;
+  animation: aurum-drift 30s ease-in-out infinite alternate-reverse;
+}
+@keyframes aurum-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3%, 5%) scale(1.05); }
+  100% { transform: translate(-2%, -3%) scale(0.97); }
+}
+
+/* ─── 9. 滾動條 ─── */
+html.theme-aurum .chat-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(245, 185, 61, 0.15);
+}
+html.theme-aurum .chat-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(245, 185, 61, 0.3);
+}
+html.theme-aurum .sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(168, 85, 247, 0.15);
+}
+
+/* ─── 10. 輸入框 gradient ─── */
+html.theme-aurum .input-gradient-mask {
+  background: linear-gradient(to top, #050506 70%, transparent 100%);
+}
+
+/* ─── 11. Placeholder ─── */
+html.theme-aurum .placeholder\:text-secondary::placeholder {
+  color: #4a4e58 !important;
+}
+
+/* ─── 12. 焦點環 ─── */
+html.theme-aurum :focus-visible {
+  outline: 2px solid rgba(245, 185, 61, 0.5);
+  outline-offset: 2px;
+}
+
+/* ─── 13. 等寬數字強化 ─── */
+html.theme-aurum .font-mono {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ─── 14. 漲跌幅功能色保留 ─── */
+html.theme-aurum .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+html.theme-aurum .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* ─── 15. dropdown 懸浮面板 ─── */
+html.theme-aurum .shadow-dropdown {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 8px 32px -8px rgba(0, 0, 0, 0.8),
+    0 0 40px -12px rgba(168, 85, 247, 0.1) !important;
 }
 
 /* ─── Crypto Marquee Animation ─── */

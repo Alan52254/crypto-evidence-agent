@@ -72,10 +72,8 @@ export function IntelligenceWorkspace() {
   }
 
   /* ── ReAct Agent State ── */
-  const [asset, setAsset] = useState<Asset>("BTC");
-  const [question, setQuestion] = useState(
-    "市場上認為 BTC 短期盤整，請驗證正反證據。",
-  );
+  const [asset, setAsset] = useState<Asset>("Market");
+  const [question, setQuestion] = useState("");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [events, setEvents] = useState<TraceStreamEvent[]>([]);
   const [report, setReport] = useState<AnalysisReport | null>(null);
@@ -124,7 +122,7 @@ export function IntelligenceWorkspace() {
       const response = await fetch("/api/v1/analyse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset, question: currentQuestion }),
+        body: JSON.stringify({ asset: asset === "Market" ? "BTC" : asset, question: currentQuestion }),
       });
 
       if (!response.ok) {

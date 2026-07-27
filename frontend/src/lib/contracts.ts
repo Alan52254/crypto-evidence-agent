@@ -1,4 +1,5 @@
-export type Asset = "BTC" | "ETH" | "SOL" | "BNB" | "XRP";
+export type Asset = "BTC" | "ETH" | "SOL" | "BNB" | "XRP" | "Market";
+export type CoinAsset = "BTC" | "ETH" | "SOL" | "BNB" | "XRP";
 export type Facet = "technical" | "positioning" | "fundamental" | "sentiment";
 export type Stance = "bullish" | "bearish" | "neutral";
 export type ExecutionStatus =

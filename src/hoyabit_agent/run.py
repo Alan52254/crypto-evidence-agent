@@ -230,6 +230,7 @@ async def analyse(
 
     gathered: tuple[Evidence, ...] = ()
     attempts: tuple[ToolAttempt, ...] = ()
+    unavailable_tools: set[str] = set()  # 已確認不可用的工具，不再重試
     # 工具名稱只有 `spec.name` 一個來源 —— 模型看到的、MCP 暴露的、
     # 這裡查表用的，永遠是同一個字串。
     #
@@ -242,6 +243,23 @@ async def analyse(
     tools: tuple[ToolSpec, ...] = tuple(
         registry[name].spec for name in sorted(registry)
     )
+
+    # 預取低成本來源（CoinGecko、歷史 CSV）—— 不需要模型決定，直接先拿
+    prefetch_names = ("coingecko_market", "market_dataset_context")
+    prefetch_results = await asyncio.gather(
+        *(
+            _invoke(
+                ToolInvocation(name, {"asset": asset.value}),
+                registry, asset, io_timeout_seconds,
+            )
+            for name in prefetch_names
+            if name in registry
+        ),
+        return_exceptions=True,
+    )
+    for result in prefetch_results:
+        if isinstance(result, tuple):
+            gathered = merge_independent_evidence((*gathered, *result))
 
     assessment = gap_rules.assess(gathered, requirement)
     used_fallback_plan = False
@@ -322,6 +340,30 @@ async def analyse(
             )
             break
 
+        # 過濾掉已確認不可用的工具 — 不再浪費時間重試
+        valid_invocations = tuple(
+            inv for inv in decision.invocations
+            if inv.tool not in unavailable_tools
+        )
+        if not valid_invocations and not gathered:
+            # 所有工具都不可用且沒有任何證據 → 用 fallback plan
+            if not used_fallback_plan:
+                used_fallback_plan = True
+                valid_invocations = tuple(
+                    inv for inv in _fallback_plan(tools, asset)
+                    if inv.tool not in unavailable_tools
+                )
+        if not valid_invocations:
+            # 沒有可用的工具了，帶著現有證據收斂
+            recorder.record(
+                TraceNodeKind.BUDGET_EXHAUSTED,
+                f"所有可用工具已嘗試或不可用（{', '.join(sorted(unavailable_tools))}），"
+                "以現有證據組裝報告。",
+                gap_before=gap.missing_facets,
+                gap_after=gap.missing_facets,
+            )
+            break
+
         planned = tuple(
             ToolExecutionRecord(
                 inv.tool,
@@ -329,7 +371,7 @@ async def analyse(
                 dict(inv.arguments),
                 ToolExecutionStatus.PLANNED,
             )
-            for inv in decision.invocations
+            for inv in valid_invocations
         )
         recorder.record(
             TraceNodeKind.PLAN,
@@ -337,17 +379,18 @@ async def analyse(
             gap_before=gap.missing_facets,
             gap_after=gap.missing_facets,
             executions=planned,
-            detail={inv.tool: _describe(inv.arguments) for inv in decision.invocations},
+            detail={inv.tool: _describe(inv.arguments) for inv in valid_invocations},
         )
 
         results = await asyncio.gather(
-            *(_invoke(inv, registry, asset, io_timeout_seconds) for inv in decision.invocations)
+            *(_invoke(inv, registry, asset, io_timeout_seconds) for inv in valid_invocations)
         )
 
         fresh: list[Evidence] = []
         fresh_attempts: list[ToolAttempt] = []
-        for invocation, result in zip(decision.invocations, results, strict=True):
+        for invocation, result in zip(valid_invocations, results, strict=True):
             if result is None:
+                unavailable_tools.add(invocation.tool)
                 recorder.record(
                     TraceNodeKind.SOURCE_UNAVAILABLE,
                     f"證據源 {invocation.tool} 暫時不可用，改由其他來源補足",

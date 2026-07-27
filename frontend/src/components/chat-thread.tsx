@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BrainCircuit,
   SearchCheck,
@@ -9,6 +9,9 @@ import {
   TrendingDown,
   Minus,
   ExternalLink,
+  Copy,
+  Check,
+  Download,
 } from "lucide-react";
 import type {
   AnalysisReport,
@@ -16,6 +19,10 @@ import type {
   EvidenceRecord,
   TraceStreamEvent,
 } from "@/lib/contracts";
+import {
+  copyReportToClipboard,
+  downloadReportMarkdown,
+} from "@/lib/report-utils";
 
 /* ─────────────────────── Props ─────────────────────── */
 
@@ -262,6 +269,8 @@ function ReportResponse({
   report: AnalysisReport;
   onEvidenceClick: (evidence: EvidenceRecord) => void;
 }) {
+  const [copied, setCopied] = useState(false);
+
   const StanceIcon =
     report.stance === "bullish"
       ? TrendingUp
@@ -276,31 +285,73 @@ function ReportResponse({
       ? "text-red-700 bg-red-50 border-red-200"
       : "text-amber-800 bg-amber-50 border-amber-200";
 
+  async function handleCopy() {
+    const ok = await copyReportToClipboard(report);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      {/* Header metrics */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div
-          className={`inline-flex items-center gap-1.5 rounded-pill border px-3 py-1 text-label-caps font-bold ${stanceColor}`}
-        >
-          <StanceIcon className="h-3.5 w-3.5" />
-          {report.stance.toUpperCase()}
+      {/* Header metrics & Action Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/60 pb-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div
+            className={`inline-flex items-center gap-1.5 rounded-pill border px-3 py-1 text-label-caps font-bold ${stanceColor}`}
+          >
+            <StanceIcon className="h-3.5 w-3.5" />
+            {report.stance.toUpperCase()}
+          </div>
+          <div className="flex items-center gap-4 text-data-tabular font-mono text-xs">
+            <span className="text-secondary">
+              Confidence:{" "}
+              <strong className="tabular font-mono text-primary font-bold">
+                {report.confidence != null
+                  ? `${Math.round(report.confidence * 100)}%`
+                  : "N/A"}
+              </strong>
+            </span>
+            <span className="text-secondary">
+              Cutoff:{" "}
+              <strong className="font-mono text-primary font-bold">
+                {report.cutoff}
+              </strong>
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-4 text-data-tabular font-mono text-xs">
-          <span className="text-secondary">
-            Confidence:{" "}
-            <strong className="tabular font-mono text-primary font-bold">
-              {report.confidence != null
-                ? `${Math.round(report.confidence * 100)}%`
-                : "N/A"}
-            </strong>
-          </span>
-          <span className="text-secondary">
-            Cutoff:{" "}
-            <strong className="font-mono text-primary font-bold">
-              {report.cutoff}
-            </strong>
-          </span>
+
+        {/* Action Buttons: Copy & Download */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold text-primary hover:bg-surface-container hover:border-primary/40 transition-colors active:scale-95"
+            title="複製研報全文 (Markdown)"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="text-emerald-600 font-bold">已複製內文！</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5 text-secondary" />
+                <span>複製研報</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadReportMarkdown(report)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-low px-2.5 py-1 text-xs font-semibold text-primary hover:bg-surface-container hover:border-primary/40 transition-colors active:scale-95"
+            title="下載 Markdown 研報檔案"
+          >
+            <Download className="h-3.5 w-3.5 text-secondary" />
+            <span>下載 Markdown</span>
+          </button>
         </div>
       </div>
 

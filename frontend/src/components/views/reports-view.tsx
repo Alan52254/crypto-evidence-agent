@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
   BarChart3,
   Download,
+  Copy,
+  Check,
   RefreshCw,
   Loader2,
   CheckCircle2,
@@ -15,6 +17,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Asset, Stance, Facet, AnalysisReport } from "@/lib/contracts";
+import {
+  copyReportToClipboard,
+  downloadReportMarkdown,
+} from "@/lib/report-utils";
 
 /* ── Generate Markdown from a report ── */
 function generateMarkdown(report: AnalysisReport): string {
@@ -269,140 +275,7 @@ export function ReportsView() {
 
         {/* Reports list */}
         {!loading && reports.map((report) => (
-          <article
-            key={report.run_id}
-            className="ai-card rounded-2xl border border-outline-variant bg-surface-container-lowest p-6 space-y-4"
-          >
-            {/* Report Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-pill bg-primary px-3 py-1 font-mono text-[12px] font-bold text-on-primary">
-                    {report.asset} / USD
-                  </span>
-                  <StanceBadge stance={report.stance} />
-                </div>
-                <h3 className="mt-2 text-headline-md font-bold text-primary">
-                  {report.question}
-                </h3>
-                <p className="mt-1 font-mono text-[11px] text-secondary">
-                  Run: {report.run_id} | Cutoff: {report.cutoff}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  className="gap-1.5 text-[12px]"
-                  onClick={() => downloadMarkdown(report)}
-                >
-                  <Download className="h-4 w-4" /> 下載 Markdown
-                </Button>
-              </div>
-            </div>
-
-            {/* Key Takeaways Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3.5">
-                <span className="text-label-caps text-secondary uppercase font-semibold">跨因子一致度</span>
-                <p className="font-mono text-headline-md font-bold text-primary mt-1">
-                  {report.confidence != null ? `${Math.round(report.confidence * 100)}%` : "N/A"}
-                </p>
-              </div>
-              <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3.5">
-                <span className="text-label-caps text-secondary uppercase font-semibold">稽核引證項目</span>
-                <p className="font-mono text-headline-md font-bold text-primary mt-1">
-                  {report.claims.length} 判斷 / {report.evidence.length} 證據
-                </p>
-              </div>
-              <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3.5">
-                <span className="text-label-caps text-secondary uppercase font-semibold">因子覆蓋</span>
-                <p className="font-mono text-body-md font-bold text-primary mt-1">
-                  {report.facet_stances ? Object.keys(report.facet_stances).length : 0} / 4 面向
-                </p>
-              </div>
-            </div>
-
-            {/* Facet Stances */}
-            {report.facet_stances && Object.keys(report.facet_stances).length > 0 && (
-              <div className="flex flex-wrap gap-2 pt-1">
-                {Object.entries(report.facet_stances).map(([facet, stance]) => (
-                  <FacetStancePill key={facet} facet={facet} stance={stance as Stance} />
-                ))}
-              </div>
-            )}
-
-            {/* Expandable Claims Section */}
-            <div className="border-t border-outline-variant pt-3">
-              <button
-                onClick={() => setExpandedReport(expandedReport === report.run_id ? null : report.run_id)}
-                className="flex items-center gap-2 text-[13px] font-semibold text-primary hover:text-primary/80 transition-colors"
-              >
-                <FileText className="h-4 w-4" />
-                {expandedReport === report.run_id ? "收起判斷條目" : `展開判斷條目 (${report.claims.length})`}
-              </button>
-
-              {expandedReport === report.run_id && (
-                <div className="mt-3 space-y-2.5 animate-fade-in">
-                  {report.claims.map((claim, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-xl border border-outline-variant bg-surface-container-low p-4"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <span
-                          className={`rounded-pill px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                            claim.role === "counter_evidence" || claim.role === "risk"
-                              ? "bg-red-100 text-red-700"
-                              : claim.role === "watch"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {claim.role.replace("_", " ")}
-                        </span>
-                        <span className="text-[10px] text-secondary font-mono capitalize">
-                          {claim.facet}
-                        </span>
-                      </div>
-                      <p className="text-body-md leading-relaxed text-primary">
-                        {claim.text}
-                      </p>
-                      {claim.evidence_ids.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {claim.evidence_ids.map((id) => (
-                            <span
-                              key={id}
-                              className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-surface-container-lowest px-2 py-0.5 font-mono text-[10px] font-semibold text-primary"
-                            >
-                              <ExternalLink className="h-2.5 w-2.5" />
-                              {id}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Evidence sources */}
-                  {report.evidence.length > 0 && (
-                    <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-4">
-                      <h4 className="text-[11px] font-semibold uppercase tracking-widest text-secondary mb-2">
-                        Evidence Sources ({report.evidence.length})
-                      </h4>
-                      <div className="space-y-2">
-                        {report.evidence.map((ev) => (
-                          <div key={ev.evidence_id} className="text-[11px] text-primary">
-                            <span className="font-mono font-semibold">{ev.evidence_id}</span>
-                            <span className="text-secondary"> — {ev.summary}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </article>
+          <ReportCard key={report.run_id} report={report} />
         ))}
 
         {/* Trust notice */}
@@ -419,6 +292,172 @@ export function ReportsView() {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Report Card Component ── */
+
+function ReportCard({ report }: { report: AnalysisReport }) {
+  const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  async function handleCopy() {
+    const ok = await copyReportToClipboard(report);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }
+
+  return (
+    <article className="ai-card rounded-2xl border border-outline-variant bg-surface-container-lowest p-6 space-y-4">
+      {/* Report Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-pill bg-primary px-3 py-1 font-mono text-[12px] font-bold text-on-primary">
+              {report.asset} / USD
+            </span>
+            <StanceBadge stance={report.stance} />
+          </div>
+          <h3 className="mt-2 text-headline-md font-bold text-primary">
+            {report.question}
+          </h3>
+          <p className="mt-1 font-mono text-[11px] text-secondary">
+            Run: {report.run_id} | Cutoff: {report.cutoff}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            className="gap-1.5 text-[12px]"
+            onClick={handleCopy}
+          >
+            {copied ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="text-emerald-600 font-bold">已複製！</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5 text-secondary" />
+                <span>複製研報</span>
+              </>
+            )}
+          </Button>
+          <Button
+            variant="secondary"
+            className="gap-1.5 text-[12px]"
+            onClick={() => downloadReportMarkdown(report)}
+          >
+            <Download className="h-4 w-4" /> 下載 Markdown
+          </Button>
+        </div>
+      </div>
+
+      {/* Key Takeaways Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3.5">
+          <span className="text-label-caps text-secondary uppercase font-semibold">跨因子一致度</span>
+          <p className="font-mono text-headline-md font-bold text-primary mt-1">
+            {report.confidence != null ? `${Math.round(report.confidence * 100)}%` : "N/A"}
+          </p>
+        </div>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3.5">
+          <span className="text-label-caps text-secondary uppercase font-semibold">稽核引證項目</span>
+          <p className="font-mono text-headline-md font-bold text-primary mt-1">
+            {report.claims.length} 判斷 / {report.evidence.length} 證據
+          </p>
+        </div>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3.5">
+          <span className="text-label-caps text-secondary uppercase font-semibold">因子覆蓋</span>
+          <p className="font-mono text-body-md font-bold text-primary mt-1">
+            {report.facet_stances ? Object.keys(report.facet_stances).length : 0} / 4 面向
+          </p>
+        </div>
+      </div>
+
+      {/* Facet Stances */}
+      {report.facet_stances && Object.keys(report.facet_stances).length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {Object.entries(report.facet_stances).map(([facet, stance]) => (
+            <FacetStancePill key={facet} facet={facet} stance={stance as Stance} />
+          ))}
+        </div>
+      )}
+
+      {/* Expandable Claims Section */}
+      <div className="border-t border-outline-variant pt-3">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 text-[13px] font-semibold text-primary hover:text-primary/80 transition-colors"
+        >
+          <FileText className="h-4 w-4" />
+          {expanded ? "收起判斷條目" : `展開判斷條目 (${report.claims.length})`}
+        </button>
+
+        {expanded && (
+          <div className="mt-3 space-y-2.5 animate-fade-in">
+            {report.claims.map((claim, idx) => (
+              <div
+                key={idx}
+                className="rounded-xl border border-outline-variant bg-surface-container-low p-4"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span
+                    className={`rounded-pill px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                      claim.role === "counter_evidence" || claim.role === "risk"
+                        ? "bg-red-100 text-red-700"
+                        : claim.role === "watch"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-emerald-100 text-emerald-700"
+                    }`}
+                  >
+                    {claim.role.replace("_", " ")}
+                  </span>
+                  <span className="text-[10px] text-secondary font-mono capitalize">
+                    {claim.facet}
+                  </span>
+                </div>
+                <p className="text-body-md leading-relaxed text-primary">
+                  {claim.text}
+                </p>
+                {claim.evidence_ids.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {claim.evidence_ids.map((id) => (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-surface-container-lowest px-2 py-0.5 font-mono text-[10px] font-semibold text-primary"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5" />
+                        {id}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Evidence sources */}
+            {report.evidence.length > 0 && (
+              <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-4">
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-secondary mb-2">
+                  Evidence Sources ({report.evidence.length})
+                </h4>
+                <div className="space-y-2">
+                  {report.evidence.map((ev) => (
+                    <div key={ev.evidence_id} className="text-[11px] text-primary">
+                      <span className="font-mono font-semibold">{ev.evidence_id}</span>
+                      <span className="text-secondary"> — {ev.summary}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 

@@ -12,6 +12,7 @@ import asyncio
 import html
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import date
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -81,13 +82,23 @@ def create_app(
         question = str(payload.get("question", "")).strip()
         if asset not in {"BTC", "ETH", "SOL", "BNB", "XRP"} or not question:
             return JSONResponse({"error": "asset and question are required"}, status_code=422)
+
+        # 這是即時 demo 端點 —— 未帶 as_of_date 時預設今天,落在即時模式,
+        # 讓 live 證據源真的會被呼叫。若靜默退回資料集截止日,回測 regime
+        # 會把所有 live 來源濾掉(Step 4),使用者看不出來,系統卻什麼都沒抓。
+        raw_as_of = payload.get("as_of_date")
+        try:
+            as_of_date = date.fromisoformat(str(raw_as_of)) if raw_as_of else date.today()
+        except ValueError:
+            return JSONResponse({"error": "as_of_date must be an ISO date"}, status_code=422)
+
         run_id = str(uuid.uuid4())
         event_broker.begin(run_id)
 
         async def execute() -> None:
             try:
                 outcome = await runner(
-                    AnalysisRequest(asset, question),
+                    AnalysisRequest(asset, question, as_of_date=as_of_date),
                     run_id,
                     lambda node: event_broker.publish_trace(run_id, node),
                 )

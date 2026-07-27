@@ -12,6 +12,7 @@ import json
 import time
 import uuid
 from collections.abc import Callable, Mapping
+from datetime import UTC, date, datetime
 
 from hoyabit_agent import gaps as gap_rules
 from hoyabit_agent.claim_ledger import LedgerResult, coverage_ratio, verify
@@ -31,6 +32,7 @@ from hoyabit_agent.domain import (
     Trace,
     TraceNode,
     TraceNodeKind,
+    analysis_regime,
 )
 from hoyabit_agent.question import EvidenceRequirement, derive_requirement, mentioned_assets
 from hoyabit_agent.seams import (
@@ -46,6 +48,7 @@ from hoyabit_agent.seams import (
     ToolSpec,
 )
 from hoyabit_agent.tools import (
+    as_of_reference,
     assess_confidence,
     evidence_gap,
     gate_asset,
@@ -172,6 +175,7 @@ async def analyse(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     run_id: str | None = None,
     on_trace: Callable[[TraceNode], None] | None = None,
+    today: date | None = None,
 ) -> AnalysisOutcome:
     """對一個受涵蓋幣種跑一次分析回合。
 
@@ -201,12 +205,24 @@ async def analyse(
 
     recorder.record(TraceNodeKind.ASSET_GATE, f"{asset.value} 為受涵蓋幣種，進入分析")
 
+    # 時間立足點 —— 缺口的時效門檻與信心度的新鮮度一律錨定在分析截止日,
+    # 不讀現實時鐘（ADR 0005）。回測時,同日證據視為當前,不被誤判為過期。
+    as_of_ref = as_of_reference(request.as_of_date)
+
+    # 分析模式由截止日推導 —— 判定回測/即時的唯一合法時鐘讀取點。
+    # today 顯式注入(測試可控),production 省略時退回現實日期。
+    regime = analysis_regime(request.as_of_date, today=today or datetime.now(UTC).date())
+
     # 題型分類 —— 決定「這一題需要什麼證據」。確定性判斷，不押在模型回應上。
+    # 回測模式下,市場摘要只要求技術面,另三面記為資料不可得(見 derive_requirement)。
     involved = mentioned_assets(request.question, asset)
-    requirement: EvidenceRequirement = derive_requirement(request.question, involved)
+    requirement: EvidenceRequirement = derive_requirement(
+        request.question, involved, regime=regime
+    )
     recorder.record(
         TraceNodeKind.GAP_CHECK,
-        f"題型判定：{requirement.question_type.value}\n{requirement.describe()}",
+        f"分析模式：{regime.value}\n題型判定：{requirement.question_type.value}\n"
+        f"{requirement.describe()}",
     )
 
     # 蒐集迴圈的硬截止 —— 保留組裝時間，見 ASSEMBLY_RESERVE_SECONDS。
@@ -216,7 +232,13 @@ async def analyse(
     attempts: tuple[ToolAttempt, ...] = ()
     # 工具名稱只有 `spec.name` 一個來源 —— 模型看到的、MCP 暴露的、
     # 這裡查表用的，永遠是同一個字串。
-    registry: dict[str, EvidenceSource] = {source.spec.name: source for source in sources}
+    #
+    # 依分析模式過濾來源 —— 不合規的來源（回測下的 live 工具）在此就被排除，
+    # 模型連工具存在都不知道，而不是呼叫後才丟棄結果。這是防堵「偷看未來」
+    # 的實體鎖（ADR 0005 / Sol B），比只驗證回傳證據更嚴格。
+    registry: dict[str, EvidenceSource] = {
+        source.spec.name: source for source in sources if regime in source.supported_regimes
+    }
     tools: tuple[ToolSpec, ...] = tuple(
         registry[name].spec for name in sorted(registry)
     )
@@ -224,7 +246,7 @@ async def analyse(
     assessment = gap_rules.assess(gathered, requirement)
     used_fallback_plan = False
     for _ in range(max_iterations):
-        gap = evidence_gap(gathered)
+        gap = evidence_gap(gathered, now=as_of_ref)
         assessment = gap_rules.assess(gathered, requirement)
         if not assessment:
             # 收斂由**題型規則**判定，不是模型說夠了就停。
@@ -353,7 +375,7 @@ async def analyse(
         )
         attempts = attempts + tuple(fresh_attempts)
         gathered = merge_independent_evidence([*gathered, *fresh])
-        gap_after = evidence_gap(gathered)
+        gap_after = evidence_gap(gathered, now=as_of_ref)
         called = ", ".join(inv.tool for inv in decision.invocations)
         recorder.record(
             TraceNodeKind.GATHER,
@@ -371,6 +393,9 @@ async def analyse(
         recorder,
         request.question,
         assessment,
+        as_of=request.as_of_date,
+        unavailable_facets=requirement.unavailable_facets,
+        boundary_notes=requirement.boundary_notes,
     )
     return AnalysisOutcome(
         run_id=identifier,
@@ -433,6 +458,10 @@ def _assemble(
     recorder: _TraceRecorder,
     question: str = "請分析當前市場狀況",
     assessment: gap_rules.GapAssessment | None = None,
+    *,
+    as_of: date | None = None,
+    unavailable_facets: frozenset[Facet] = frozenset(),
+    boundary_notes: tuple[str, ...] = (),
 ) -> Report:
     """組裝階段 —— 判斷先經帳本驗證，再渲染。
 
@@ -483,17 +512,31 @@ def _assemble(
         f"結論層證據覆蓋率 {coverage:.0%}",
     )
 
-    # 未關閉的缺口與被拒絕的判斷一併成為限制說明 —— 命題要求明確指出限制，
-    # 而不是把不確定性藏起來。
-    limitations = list(ledger.limitations())
+    # 限制分兩層，因為它們有不同的讀者與不同的安全性：
+    #
+    # report_limitations —— **資料/方法論**層級，進報告本體給評審看。
+    # 回測取不到的面明列為「資料不可得」，未關閉的必補缺口如實揭露。
+    # 這些**不含任何被拒判斷的原文**，因此放進報告本體是安全的
+    # （見 ADR 0005 / Sol A；命題要求明確指出限制，不把不確定性藏起來）。
+    report_limitations = [
+        f"{facet.value} 面資料不可得（回測模式僅有資料集 OHLCV，無合規的即時來源）"
+        for facet in sorted(unavailable_facets, key=lambda f: f.value)
+    ]
+    # 邊界聲明（未命中已知題型、預測題劃界）—— 同樣是資料/方法論層級,
+    # 不含被拒判斷原文,可安全進報告本體（見 question.EvidenceRequirement）。
+    report_limitations.extend(boundary_notes)
     if assessment is not None:
-        limitations.extend(
+        report_limitations.extend(
             f"未關閉的證據缺口：{gap.detail}" for gap in assessment.blocking_gaps
         )
-    if limitations:
+
+    # trace_limitations —— 再額外納入被拒/爭議判斷的說明（含原文），僅供推論軌跡稽核。
+    # 這些**刻意不進報告本體**：被拒判斷的原文出現在報告裡，會被誤讀成系統的主張。
+    trace_limitations = [*report_limitations, *ledger.limitations()]
+    if trace_limitations:
         recorder.record(
             TraceNodeKind.REPORT,
-            "報告限制說明：\n" + "\n".join(f"- {line}" for line in limitations),
+            "報告限制說明：\n" + "\n".join(f"- {line}" for line in trace_limitations),
         )
 
     # 通過驗證（含爭議）的判斷進報告；被拒絕的留在 dropped_claims 供軌跡呈現。
@@ -516,7 +559,7 @@ def _assemble(
         for claim in ledger.unsupported
     )
 
-    confidence = assess_confidence(gathered)
+    confidence = assess_confidence(gathered, as_of=as_of)
     stance = overall_stance(confidence)
     recorder.record(
         TraceNodeKind.REPORT,
@@ -532,6 +575,7 @@ def _assemble(
         dropped_claims=dropped,
         evidence=gathered,
         question=question,
+        limitations=tuple(report_limitations),
     )
 
 

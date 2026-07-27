@@ -96,6 +96,33 @@ async def test_loading_a_run_that_was_never_saved_returns_nothing(
     assert await store.load("no-such-run") is None
 
 
+async def test_report_limitations_survive_the_round_trip(
+    store: PostgresAnalysisStore,
+) -> None:
+    """限制是一等輸出 —— 重載歷史回合時必須帶回,否則前端歷史會遺失誠實邊界。"""
+    base = an_outcome()
+    assert base.report is not None
+    report = Report(
+        asset=base.report.asset,
+        stance=base.report.stance,
+        confidence=base.report.confidence,
+        claims=base.report.claims,
+        dropped_claims=base.report.dropped_claims,
+        evidence=base.report.evidence,
+        question=base.report.question,
+        limitations=(
+            "positioning 面資料不可得（回測模式僅有資料集 OHLCV，無合規的即時來源）",
+            "sentiment 面資料不可得（回測模式僅有資料集 OHLCV，無合規的即時來源）",
+        ),
+    )
+    await store.save(AnalysisOutcome("run-1", report=report, trace=base.trace, rejection=None))
+
+    loaded = await store.load("run-1")
+
+    assert loaded is not None and loaded.report is not None
+    assert loaded.report.limitations == report.limitations
+
+
 # --------------------------------------------------------------------------
 # 溯源：判斷 → 證據 → 來源片段
 # --------------------------------------------------------------------------

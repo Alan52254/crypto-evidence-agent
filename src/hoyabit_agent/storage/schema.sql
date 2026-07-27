@@ -19,10 +19,15 @@ CREATE TABLE IF NOT EXISTS analysis_run (
     confidence_cause          TEXT,
     confidence_facet_stances  JSONB NOT NULL DEFAULT '{}'::jsonb,
     facets_present            JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- 本回合明確承認的限制（資料不可得的面、未關閉的缺口）。是一等輸出,
+    -- 重載歷史回合時必須帶回,否則前端歷史檢視會遺失系統誠實界定的邊界。
+    limitations               JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE analysis_run ADD COLUMN IF NOT EXISTS question TEXT NOT NULL
     DEFAULT '請分析當前市場狀況';
+ALTER TABLE analysis_run ADD COLUMN IF NOT EXISTS limitations JSONB NOT NULL
+    DEFAULT '[]'::jsonb;
 
 -- 證據。不可變，識別碼在同一個回合內唯一。
 -- 刻意以 (run_id, evidence_id) 為主鍵而非全域唯一：同一項證據在不同回合

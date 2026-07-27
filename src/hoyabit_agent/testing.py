@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from hoyabit_agent.domain import (
     AnalysisOutcome,
+    AnalysisRegime,
     Asset,
     DraftClaim,
     Evidence,
@@ -99,11 +100,14 @@ class StaticSource:
         name: str = "static",
         costs_seconds: float = 0.0,
         raises: Exception | None = None,
+        supported_regimes: frozenset[AnalysisRegime] = frozenset(AnalysisRegime),
     ) -> None:
         self._items = tuple(items)
         self._name = name
         self._costs_seconds = costs_seconds
         self._raises = raises
+        # 預設兩種模式皆支援 —— 只有明確測試回測過濾行為的案例需要窄化它。
+        self.supported_regimes = supported_regimes
         self.received: list[Arguments] = []
 
     @property
@@ -129,6 +133,8 @@ class HangingSource:
 
     掛起是比失敗更陰險的故障模式：它不會拋例外，只會安靜地吃掉預算。
     """
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset(AnalysisRegime)
 
     @property
     def spec(self) -> ToolSpec:

@@ -139,8 +139,9 @@ class PostgresAnalysisStore:
 
         await connection.execute(
             "INSERT INTO analysis_run (run_id, asset, question, stance, rejection_reason,"
-            " confidence_value, confidence_cause, confidence_facet_stances, facets_present)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            " confidence_value, confidence_cause, confidence_facet_stances, facets_present,"
+            " limitations)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 outcome.run_id,
                 report.asset.value if report is not None else None,
@@ -151,6 +152,7 @@ class PostgresAnalysisStore:
                 cause,
                 json.dumps(stances),
                 json.dumps(present),
+                json.dumps(list(report.limitations) if report is not None else []),
             ),
         )
 
@@ -268,6 +270,7 @@ class PostgresAnalysisStore:
                     dropped_claims=dropped,
                     evidence=evidence,
                     question=str(run["question"]),
+                    limitations=tuple(run.get("limitations") or ()),
                 ),
                 trace=trace,
                 rejection=rejection,

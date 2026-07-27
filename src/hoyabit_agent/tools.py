@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from hoyabit_agent.domain import (
     Asset,
@@ -189,9 +189,25 @@ def facet_stances(evidence: Iterable[Evidence]) -> dict[Facet, Stance]:
     return {facet: facet_stance(items) for facet, items in grouped.items()}
 
 
+def as_of_reference(as_of: date | datetime | None) -> datetime:
+    """把分析截止日換成新鮮度的參考時刻 —— 該日的 UTC 收盤(23:59:59)。
+
+    日 K 代表當日收盤時的資產狀態,因此「當日產生的證據」在該日評估時
+    年齡應趨近零。未指定時退回現實時鐘,維持即時模式的既有行為。
+    ADR 0005:時效永遠對 as_of 相減,不對現實時鐘。
+    """
+    if as_of is None:
+        return datetime.now(UTC)
+    if isinstance(as_of, datetime):
+        return as_of
+    return datetime(as_of.year, as_of.month, as_of.day, 23, 59, 59, tzinfo=UTC)
+
+
 def assess_confidence(
     evidence: Iterable[Evidence],
     minimum_facets: int = MINIMUM_FACETS_FOR_CONFIDENCE,
+    *,
+    as_of: date | datetime | None = None,
 ) -> ConfidenceResult:
     """信心度 — 多維度加權評估（ADR 0002 + 競賽規格）。
 
@@ -201,6 +217,8 @@ def assess_confidence(
     - 時效 (freshness): 20%
     - 一致性 (agreement): 20%
     - 完整性 (completeness): 10%
+
+    `as_of` 是新鮮度的參考時間立足點(見 ADR 0005)。未指定時退回現實時鐘。
     """
     items = tuple(evidence)
     stances = facet_stances(items)
@@ -244,7 +262,7 @@ def assess_confidence(
     timestamps = [excerpt.retrieved_at for item in items for excerpt in item.excerpts]
     if timestamps:
         newest = max(timestamps)
-        age = datetime.now(UTC) - newest
+        age = as_of_reference(as_of) - newest
         # Fresh within 1 hour = 1.0, decays over 24 hours to 0.2
         if age <= timedelta(hours=1):
             freshness = 1.0
@@ -324,6 +342,7 @@ def check_citations(
 
 
 __all__ = [
+    "as_of_reference",
     "assess_confidence",
     "check_citations",
     "evidence_gap",

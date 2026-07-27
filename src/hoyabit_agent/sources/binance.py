@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from hoyabit_agent.arguments import bounded_int, choice
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.indicators import (
     Kline,
     funding_to_stance,
@@ -59,7 +59,13 @@ def _excerpt(source_id: str, url: str, locator: str, text: str) -> SourceExcerpt
 
 
 class _BinanceSource:
-    """兩個 Binance 證據源共用的取數與退讓邏輯。"""
+    """兩個 Binance 證據源共用的取數與退讓邏輯。
+
+    只回傳**當下**的即時市場狀態,無法以歷史截止日限定,故只在即時模式合規 ——
+    回測模式呼叫它等於讓證據悄悄夾帶截止日之後的資訊(ADR 0005 / Sol B)。
+    """
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(self, client: httpx.AsyncClient, weight_ceiling: int = WEIGHT_CEILING) -> None:
         self._client = client

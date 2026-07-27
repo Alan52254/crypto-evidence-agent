@@ -22,7 +22,7 @@ import httpx
 
 from hoyabit_agent.arguments import bounded_int
 from hoyabit_agent.dedup import assign_event_keys
-from hoyabit_agent.domain import Asset, Evidence, Facet, LabelAspect, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, LabelAspect, SourceExcerpt
 from hoyabit_agent.lexicon import LexiconLabeller
 from hoyabit_agent.seams import Arguments, ToolSpec
 
@@ -115,7 +115,11 @@ class NewsRssSource:
 
     `labeller` 預設是零依賴的詞典打分，因此**沒有模型金鑰也能完整運作**；
     ticket 05 的模型供應者滿足同一個介面，可直接對調。
+
+    只抓得到當下的最新文章,無法以歷史截止日限定,只在即時模式合規。
     """
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(
         self,

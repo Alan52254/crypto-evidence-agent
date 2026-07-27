@@ -559,12 +559,32 @@ html.dark.theme-aurum .placeholder\:text-secondary::placeholder {
   color: #787293 !important;
 }
 
-/* ─── 9. Focus Ring ─── */
-html.theme-aurum :focus-visible {
+/* ─── 9. Focus Ring & Outline Suppression ─── */
+textarea,
+input,
+select {
+  outline: none !important;
+  box-shadow: none !important;
+}
+textarea:focus,
+textarea:focus-visible,
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+html.theme-aurum button:focus-visible,
+html.theme-aurum a:focus-visible {
   outline: 2px solid rgba(168, 85, 247, 0.7);
   outline-offset: 2px;
 }
-html.dark.theme-aurum :focus-visible {
+html.dark.theme-aurum button:focus-visible,
+html.dark.theme-aurum a:focus-visible {
   outline: 2px solid rgba(255, 215, 0, 0.7);
   outline-offset: 2px;
 }

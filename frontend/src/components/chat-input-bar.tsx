@@ -61,7 +61,7 @@ export function ChatInputBar({
         onSubmit={onSubmit}
         className="pointer-events-auto mx-auto max-w-3xl"
       >
-        <div className="relative flex flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-dropdown transition-all focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/20">
+        <div className="relative flex flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-dropdown transition-shadow">
           {/* Textarea */}
           <textarea
             ref={textareaRef}
@@ -71,7 +71,8 @@ export function ChatInputBar({
             placeholder="Ask a question about crypto markets, on-chain data, or risk analysis..."
             rows={1}
             maxLength={2000}
-            className="w-full resize-none border-none bg-transparent px-4 pt-3.5 pb-2.5 text-body-md text-on-surface placeholder:text-secondary/60 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus:border-none"
+            className="w-full resize-none border-0 bg-transparent px-4 pt-3.5 pb-2.5 text-body-md text-on-surface placeholder:text-secondary/60 outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus:border-0 focus-visible:outline-none focus-visible:ring-0"
+            style={{ outline: "none", boxShadow: "none", border: "none" }}
           />
 
           {/* Action bar */}
@@ -82,7 +83,8 @@ export function ChatInputBar({
                 <select
                   value={asset}
                   onChange={(e) => onAssetChange(e.target.value as Asset)}
-                  className="appearance-none cursor-pointer rounded-lg border-none bg-surface-container-low py-1.5 pl-3 pr-7 font-mono text-[12px] font-semibold text-primary transition-colors hover:bg-surface-container focus:outline-none focus:ring-0"
+                  className="appearance-none cursor-pointer rounded-lg border-0 bg-surface-container-low py-1.5 pl-3 pr-7 font-mono text-[12px] font-semibold text-primary transition-colors hover:bg-surface-container focus:outline-none focus:ring-0 outline-none ring-0"
+                  style={{ outline: "none", boxShadow: "none", border: "none" }}
                 >
                   {ASSETS.map((a) => (
                     <option key={a.value} value={a.value}>

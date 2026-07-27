@@ -228,6 +228,57 @@ def test_enhanced_report_renders_dynamic_limitations_not_static_lies() -> None:
 
 
 @pytest.mark.asyncio
+async def test_backtest_regime_never_calls_or_offers_a_live_only_source() -> None:
+    """回測模式下,live-only 來源必須被物理擋下 —— 不只是丟棄結果。
+
+    這是防堵「模型幻覺呼叫 live 工具」的實體鎖:即使模型的腳本試圖呼叫兩個
+    工具,live-only 來源在回測下**根本不該出現在模型看到的 tools 清單裡**,
+    也不該被實際 fetch。只過濾結果、不過濾清單,無法防住模型自己選中它。
+    """
+    from hoyabit_agent.domain import DraftClaim
+    from hoyabit_agent.run import analyse
+    from hoyabit_agent.testing import ScriptedModel, StaticSource
+
+    day = date(2026, 5, 31)
+    dataset_evidence = _evidence_on(day, Facet.TECHNICAL, 0.6, "dataset:BTC")
+    live_evidence = _evidence_on(day, Facet.POSITIONING, 0.5, "binance:derivatives")
+
+    dataset_source = StaticSource(
+        [dataset_evidence],
+        name="market_dataset_context",
+        supported_regimes=frozenset({AnalysisRegime.BACKTEST, AnalysisRegime.LIVE}),
+    )
+    live_source = StaticSource(
+        [live_evidence],
+        name="binance_derivatives",
+        supported_regimes=frozenset({AnalysisRegime.LIVE}),
+    )
+    model = ScriptedModel(
+        plans=[("market_dataset_context,binance_derivatives", "嘗試蒐集技術與籌碼面")],
+        claims=[DraftClaim("技術面偏多", (dataset_evidence.id,), Facet.TECHNICAL)],
+    )
+
+    outcome = await analyse(
+        AnalysisRequest("BTC", "BTC 現況如何", as_of_date=day),
+        [dataset_source, live_source],
+        model,
+        today=date(2026, 7, 27),
+    )
+
+    # 模型從未被告知 live-only 工具存在。
+    offered_names = {tool.name for tools in model.seen_tools for tool in tools}
+    assert "binance_derivatives" not in offered_names
+    assert "market_dataset_context" in offered_names
+
+    # live-only 來源從未被實際呼叫。
+    assert live_source.received == []
+
+    # 報告只含合規來源的證據。
+    assert outcome.report is not None
+    assert all(item.facet is not Facet.POSITIONING for item in outcome.report.evidence)
+
+
+@pytest.mark.asyncio
 async def test_backtest_report_declares_unavailable_facets_as_limitations() -> None:
     """回測模式:報告的 limitations 必須明列三個取不到的面為資料不可得。
 

@@ -232,7 +232,13 @@ async def analyse(
     attempts: tuple[ToolAttempt, ...] = ()
     # 工具名稱只有 `spec.name` 一個來源 —— 模型看到的、MCP 暴露的、
     # 這裡查表用的，永遠是同一個字串。
-    registry: dict[str, EvidenceSource] = {source.spec.name: source for source in sources}
+    #
+    # 依分析模式過濾來源 —— 不合規的來源（回測下的 live 工具）在此就被排除，
+    # 模型連工具存在都不知道，而不是呼叫後才丟棄結果。這是防堵「偷看未來」
+    # 的實體鎖（ADR 0005 / Sol B），比只驗證回傳證據更嚴格。
+    registry: dict[str, EvidenceSource] = {
+        source.spec.name: source for source in sources if regime in source.supported_regimes
+    }
     tools: tuple[ToolSpec, ...] = tuple(
         registry[name].spec for name in sorted(registry)
     )

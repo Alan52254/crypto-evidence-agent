@@ -13,6 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from hoyabit_agent.domain import (
     AnalysisOutcome,
+    AnalysisRegime,
     Asset,
     DraftClaim,
     Evidence,
@@ -121,10 +122,17 @@ class EvidenceSource(Protocol):
     * 面對模型給的無效參數必須自行降級，不得拋例外 ——
       模型會給出不在 schema 內的東西，那是預期情況。
     * 呼叫者不需要知道額度、退避、金鑰、重試或逾時 —— 全部在實作內。
+    * `supported_regimes` 是它在哪個分析模式下合規，而非它能不能技術上運作。
+      回測模式呼叫者（`run.analyse`）依此在**建立 registry 與 tools 清單時**
+      就過濾掉不合規的來源 —— 模型連工具存在都不知道，而不只是呼叫後
+      結果被丟棄。這是防堵「偷看未來」的實體鎖（ADR 0005 / Sol B）。
     """
 
     @property
     def spec(self) -> ToolSpec: ...
+
+    @property
+    def supported_regimes(self) -> frozenset[AnalysisRegime]: ...
 
     async def fetch(self, asset: Asset, arguments: Arguments) -> tuple[Evidence, ...]: ...
 

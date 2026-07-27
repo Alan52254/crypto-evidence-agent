@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 from hoyabit_agent.arguments import bounded_int
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.ingest.dataset import DATASET_END_DATE
 from hoyabit_agent.ingest.documents import MarketDocument, MarketDocumentStore
 from hoyabit_agent.ingest.embeddings import Embedder
@@ -15,6 +15,10 @@ TOOL_NAME = "market_dataset_context"
 
 
 class MarketDatasetEvidenceSource:
+    """回測與即時皆合規 —— 內部已依 as_of_date 檢索,不會洩漏未來資料。"""
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset(AnalysisRegime)
+
     def __init__(self, store: MarketDocumentStore, query_embedder: Embedder) -> None:
         self._store = store
         self._embedder = query_embedder

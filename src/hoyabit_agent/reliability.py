@@ -39,6 +39,7 @@ class ReliabilityTier(Enum):
 _HIGH_PREFIXES = (
     "binance",  # 交易所原始端點（舊格式，保留相容性）
     "bnc-",  # 交易所原始端點（BNC-SPOT-*, BNC-PERP-*）
+    "candlestick-builder",  # K 線圖表生成器（原始 K 線端點重算）
     "dataset",  # 競賽 OHLCV
     "hoyabit-",  # 本所自家聯合指標（一手來源）
     "official",  # 官方公告來源
@@ -54,6 +55,7 @@ _MEDIUM_PREFIXES = (
     "coingecko",
     "defillama",
     "fear-greed",
+    "ocr-chart",  # 多模態圖片圖表 OCR
 )
 
 

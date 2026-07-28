@@ -75,7 +75,7 @@ class FredMacroSource:
         if not self._api_key:
             return ()
 
-        months = min(max(int(arguments.get("months", 6)), 1), 12)
+        months = min(max(int(arguments.get("months", 14)), 1), 24)
         start_date = (datetime.now(UTC) - timedelta(days=months * 30)).strftime("%Y-%m-%d")
 
         results: list[Evidence] = []
@@ -89,7 +89,7 @@ class FredMacroSource:
     async def _fetch_series(
         self, series_id: str, description: str, start_date: str
     ) -> Evidence | None:
-        """取得單一 FRED 時間序列。"""
+        """取得單一 FRED 時間序列，含年增率計算。"""
         try:
             response = await self._client.get(
                 BASE_URL,
@@ -99,7 +99,7 @@ class FredMacroSource:
                     "file_type": "json",
                     "observation_start": start_date,
                     "sort_order": "desc",
-                    "limit": "10",
+                    "limit": "15",  # 多取幾期以便算 YoY
                 },
                 follow_redirects=True,
             )
@@ -142,13 +142,38 @@ class FredMacroSource:
             change = ((current - prev_value) / prev_value) * 100
             change_str = f"（較前期 {change:+.2f}%）"
 
-        summary = f"{description}: {current:.2f}{change_str}（截至 {latest_date}）"
+        # 計算年增率 (YoY) — 找約 12 個月前的數據
+        yoy_str = ""
+        yoy_value = None
+        for obs in observations:
+            v = obs.get("value", ".")
+            obs_date = obs.get("date", "")
+            if v == "." or not obs_date:
+                continue
+            # 找距今 11-13 個月的觀測值
+            try:
+                from datetime import date as date_type
+                obs_d = date_type.fromisoformat(obs_date)
+                latest_d = date_type.fromisoformat(latest_date)
+                months_diff = (latest_d.year - obs_d.year) * 12 + (latest_d.month - obs_d.month)
+                if 11 <= months_diff <= 13:
+                    yoy_value = float(v)
+                    break
+            except (ValueError, TypeError):
+                continue
+        if yoy_value is not None and yoy_value != 0:
+            yoy = ((current - yoy_value) / yoy_value) * 100
+            yoy_str = f"，年增率(YoY) {yoy:+.2f}%"
+
+        summary = f"{description}: {current:.2f}{change_str}{yoy_str}（截至 {latest_date}）"
 
         text_lines = [
             f"Source: FRED API series {series_id}",
             f"Description: {description}",
             f"Latest value: {current:.4f} (as of {latest_date})",
-            f"Previous: {prev_value}" if prev_value else "",
+            f"Previous period: {prev_value}" if prev_value else "",
+            f"Month-over-month change: {change_str}" if change_str else "",
+            f"Year-over-year (YoY): {yoy:+.2f}%" if yoy_value is not None else "YoY: insufficient history",
             f"Observations retrieved: {len(observations)}",
         ]
 

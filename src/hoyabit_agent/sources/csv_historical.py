@@ -40,8 +40,8 @@ class CsvHistoricalSource:
 
     @property
     def supported_regimes(self) -> frozenset[AnalysisRegime]:
-        """只在 BACKTEST 模式下使用 —— 資料截止於 2026-05-31，LIVE 模式用此來源會有 look-ahead bias。"""
-        return frozenset({AnalysisRegime.BACKTEST})
+        """支援 BACKTEST 與 LIVE 模式 —— 提供 2026 競賽命題 CSV 資料集數據。"""
+        return frozenset({AnalysisRegime.BACKTEST, AnalysisRegime.LIVE})
 
     def _ensure_loaded(self) -> None:
         if self._loaded:

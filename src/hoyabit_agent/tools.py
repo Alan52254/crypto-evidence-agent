@@ -263,7 +263,7 @@ def assess_confidence(
     # 「多找一家轉載」無成本地抬高信心度 —— 那正是 ADR 0002 要堵的漏洞。
     from hoyabit_agent.reliability import weighted_source_count
 
-    independence = min(weighted_source_count(items), 4.0) / 4
+    independence = min(weighted_source_count(items), 6.0) / 6
 
     # 4. Freshness (時效) — 20%: based on most recent evidence timestamp
     timestamps = [excerpt.retrieved_at for item in items for excerpt in item.excerpts]

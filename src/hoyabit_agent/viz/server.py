@@ -231,8 +231,41 @@ code{{background:#f3f4f6;padding:1px 6px;border-radius:4px}}
 </body></html>"""
 
 
+class ResilientAnalysisStore:
+    """自動容錯 Store：當 Postgres 連不上時，自動降級使用記憶體 Store。"""
+
+    def __init__(self, primary: AnalysisStore, fallback: AnalysisStore) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    async def save(self, outcome: AnalysisOutcome) -> None:
+        try:
+            await self._primary.save(outcome)
+        except Exception:  # noqa: BLE001
+            pass
+        await self._fallback.save(outcome)
+
+    async def load(self, run_id: str) -> AnalysisOutcome | None:
+        try:
+            result = await self._primary.load(run_id)
+            if result is not None:
+                return result
+        except Exception:  # noqa: BLE001
+            pass
+        return await self._fallback.load(run_id)
+
+    async def recent(self, limit: int = 20) -> tuple[str, ...]:
+        try:
+            results = await self._primary.recent(limit)
+            if results:
+                return results
+        except Exception:  # noqa: BLE001
+            pass
+        return await self._fallback.recent(limit)
+
+
 async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: no cover - I/O
-    """以真實 Postgres store 起 server。"""
+    """起軌跡前端 server（支援 Postgres 斷線自動降級）。"""
     import logging
 
     import uvicorn
@@ -241,7 +274,9 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
     from hoyabit_agent.ingest.runtime import build_competition_sources
     from hoyabit_agent.models.factory import create_model_provider
     from hoyabit_agent.run import analyse
-    from hoyabit_agent.storage.postgres import PostgresAnalysisStore
+    from hoyabit_agent.storage.postgres import PostgresAnalysisStore, reachable
+    from hoyabit_agent.testing import InMemoryAnalysisStore
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -267,7 +302,16 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
                 request, sources, model, run_id=run_id, on_trace=on_trace
             )
 
-    app = create_app(PostgresAnalysisStore.from_environment(), production_runner)
+    fallback_store = InMemoryAnalysisStore()
+    postgres_store = PostgresAnalysisStore.from_environment()
+    store = ResilientAnalysisStore(postgres_store, fallback_store)
+
+    if await reachable(timeout=1.5):
+        logging.info("Connected to PostgreSQL analysis store.")
+    else:
+        logging.info("PostgreSQL unreachable on 5433/5432. Falling back to InMemoryAnalysisStore.")
+
+    app = create_app(store, production_runner)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     await uvicorn.Server(config).serve()
 

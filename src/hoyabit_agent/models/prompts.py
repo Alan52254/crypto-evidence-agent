@@ -29,6 +29,13 @@ PLAN_SYSTEM = """\
     (a) 當前假設是什麼
     (b) 什麼證據可以支持/反對這個假設
     (c) 選擇這個工具的理由
+11. **數據缺失時的預備方案（Fallback Strategy）**：
+    當核心數據工具（如交易所儲備量、鏈上指標）回傳空結果時，不得直接放棄該面向。
+    必須啟動二級檢索機制：
+    (a) 使用新聞工具搜尋相關關鍵字（如 "exchange reserve" "BTC inflow" "whale transfer"
+        "交易所儲備" "巨鯨轉移"），從次級新聞數據導出趨勢方向。
+    (b) 使用衍生品數據（資金費率、OI 變化）作為間接佐證。
+    (c) 在最終報告中標註該項證據來自「次級來源推導」而非「直接鏈上數據」。
 """
 SYNTHESIS_SYSTEM = """\
 你是競賽級加密市場研究 Agent 的綜合判斷層。請用繁體中文，嚴格以三層結構回答題目：
@@ -224,6 +231,13 @@ def synthesis_prompt(
 
     lines.append("")
     lines.append("── 輸出要求 ──")
+    lines.append(
+        "**時間序列結構化呈現**：當證據涉及每日淨流入/流出、每日活躍地址、"
+        "逐日價格變化等時間序列數據時，必須在事實層插入近 5-7 日的簡表"
+        "（Markdown table），包含日期、數值、變化方向。"
+        "若原始證據無法精確到每日，以可取得的最細粒度呈現並標註數據粒度。"
+    )
+    lines.append("")
     lines.append("請根據以上證據寫出判斷。每則判斷的 evidence_ids 只能使用上方出現過的 ID。")
     lines.append(
         "必須包含：至少 1 個 fact、1 個 inference、1 個 conclusion、"

@@ -304,12 +304,6 @@ async def analyse(
 
         if not decision.invocations and not gathered and not used_fallback_plan:
             # 規劃層不可用（額度用罄、逾時）且**還沒蒐集到任何證據**。
-            # 此時直接收斂會產出空報告，但證據源本身是健康的，而且
-            # 「有哪些工具、要分析哪個標的」都是已知的 —— 不需要模型也能
-            # 組出一個合理的基線計畫。
-            #
-            # 只在第一輪動用一次：它是保底，不是常態路徑。後續輪次若模型
-            # 仍不回應，那代表推理能力確實不可用，應該帶著限制收斂。
             used_fallback_plan = True
             decision = PlanDecision(
                 invocations=_fallback_plan(tools, asset),
@@ -319,8 +313,18 @@ async def analyse(
                     "以免在證據源健康的情況下產出空報告。"
                 ),
             )
-            # 不在這裡記軌跡 —— 下游的 PLAN 節點會帶著這個 reason 與
-            # 實際排定的工具一起記錄，重複記會讓軌跡讀者以為跑了兩輪。
+        elif not decision.invocations and assessment.missing_facets and not used_fallback_plan:
+            # 模型覺得不需要更多資料（可能被預取的證據「騙」了），
+            # 但系統的 gap check 說還有缺口。強制用 fallback 補齊。
+            used_fallback_plan = True
+            missing = ", ".join(f.value for f in assessment.missing_facets)
+            decision = PlanDecision(
+                invocations=_fallback_plan(tools, asset),
+                reason=(
+                    f"模型未發出工具呼叫但仍有未關閉缺口（{missing}）。"
+                    "改用保底計畫補齊缺失面向。"
+                ),
+            )
 
         if not decision.invocations:
             # 模型婉拒再蒐集。**模型的婉拒不等於缺口已關閉** —— 若規則仍判定

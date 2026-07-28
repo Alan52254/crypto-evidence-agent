@@ -40,7 +40,12 @@ def create_app(
     tasks: set[asyncio.Task[None]] = set()
 
     async def index(request: Request) -> Response:
-        run_ids = await store.recent()
+        try:
+            run_ids = await store.recent()
+        except Exception:  # noqa: BLE001 — 資料庫連不到不該讓整頁 500，降級成提示
+            return HTMLResponse(
+                _INDEX.format(body=_DB_UNAVAILABLE), status_code=503
+            )
         if not run_ids:
             body = (
                 "<p class=empty>還沒有任何分析回合。跑 "
@@ -56,7 +61,12 @@ def create_app(
 
     async def show_run(request: Request) -> Response:
         run_id = request.path_params["run_id"]
-        outcome = await store.load(run_id)
+        try:
+            outcome = await store.load(run_id)
+        except Exception:  # noqa: BLE001 — 見 index() 的說明
+            return HTMLResponse(
+                _INDEX.format(body=_DB_UNAVAILABLE), status_code=503
+            )
         if outcome is None:
             return HTMLResponse(
                 _INDEX.format(body=f"<p class=empty>找不到回合 {html.escape(run_id)}。</p>"),
@@ -66,7 +76,10 @@ def create_app(
 
     async def run_json(request: Request) -> Response:
         run_id = request.path_params["run_id"]
-        outcome = await store.load(run_id)
+        try:
+            outcome = await store.load(run_id)
+        except Exception:  # noqa: BLE001 — 見 index() 的說明
+            return JSONResponse({"error": "database unavailable"}, status_code=503)
         if outcome is None:
             return JSONResponse({"error": "not found", "run_id": run_id}, status_code=404)
         return Response(trace_json(outcome), media_type="application/json")
@@ -127,16 +140,27 @@ def create_app(
             },
         )
 
+    async def _load_or_503(run_id: str) -> AnalysisOutcome | JSONResponse:
+        """讀一個回合，資料庫連不到時回傳 503 而非讓例外炸穿到 ASGI 層。"""
+        try:
+            return await store.load(run_id)  # type: ignore[return-value]
+        except Exception:  # noqa: BLE001 — 見 index() 的說明
+            return JSONResponse({"error": "database unavailable"}, status_code=503)
+
     async def run_api(request: Request) -> Response:
         run_id = request.path_params["run_id"]
-        outcome = await store.load(run_id)
+        outcome = await _load_or_503(run_id)
+        if isinstance(outcome, JSONResponse):
+            return outcome
         if outcome is None:
             return JSONResponse({"error": "not found", "run_id": run_id}, status_code=404)
         return JSONResponse(outcome_payload(outcome))
 
     async def evidence_json(request: Request) -> Response:
         run_id = request.path_params["run_id"]
-        outcome = await store.load(run_id)
+        outcome = await _load_or_503(run_id)
+        if isinstance(outcome, JSONResponse):
+            return outcome
         if outcome is None or outcome.report is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         from hoyabit_agent.artifacts import evidence_list
@@ -144,7 +168,9 @@ def create_app(
 
     async def execution_log_endpoint(request: Request) -> Response:
         run_id = request.path_params["run_id"]
-        outcome = await store.load(run_id)
+        outcome = await _load_or_503(run_id)
+        if isinstance(outcome, JSONResponse):
+            return outcome
         if outcome is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         from hoyabit_agent.artifacts import execution_log_jsonl
@@ -152,7 +178,9 @@ def create_app(
 
     async def manifest_endpoint(request: Request) -> Response:
         run_id = request.path_params["run_id"]
-        outcome = await store.load(run_id)
+        outcome = await _load_or_503(run_id)
+        if isinstance(outcome, JSONResponse):
+            return outcome
         if outcome is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         from hoyabit_agent.artifacts import output_manifest
@@ -172,6 +200,13 @@ def create_app(
         ]
     )
 
+
+_DB_UNAVAILABLE = (
+    "<p class=empty>連不到資料庫（Postgres + pgvector）。分析結果沒有地方存取，"
+    "無法列出或讀取回合。</p>"
+    "<p class=empty>先確認資料庫在跑：<code>docker start hoyabit-pg</code>"
+    "（或依 README 的指令重新建立），再重新整理這頁。</p>"
+)
 
 _INDEX = """<!doctype html>
 <html lang=zh-Hant><head><meta charset=utf-8>
@@ -193,6 +228,8 @@ code{{background:#f3f4f6;padding:1px 6px;border-radius:4px}}
 
 async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: no cover - I/O
     """以真實 Postgres store 起 server。"""
+    import logging
+
     import uvicorn
 
     from hoyabit_agent.config import load_dotenv
@@ -200,8 +237,6 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
     from hoyabit_agent.models.factory import create_model_provider
     from hoyabit_agent.run import analyse
     from hoyabit_agent.storage.postgres import PostgresAnalysisStore
-
-    import logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -219,7 +254,9 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
         async with httpx.AsyncClient(timeout=90.0) as client:
             model = await create_model_provider(client)
             if model is None:
-                raise RuntimeError("No model provider configured (set GEMINI_API_KEY or GROQ_API_KEY)")
+                raise RuntimeError(
+                    "No model provider configured (set GEMINI_API_KEY or GROQ_API_KEY)"
+                )
             sources = await build_competition_sources(client, model)
             return await analyse(
                 request, sources, model, run_id=run_id, on_trace=on_trace

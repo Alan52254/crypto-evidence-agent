@@ -17,9 +17,9 @@ export async function GET(): Promise<Response> {
   };
 
   try {
-    const res = await fetch(`${BACKEND_URL}/`, {
+    const res = await fetch(`${BACKEND_URL}/health`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     });
     status.backend = res.ok ? "ok" : `error (HTTP ${res.status})`;
   } catch {

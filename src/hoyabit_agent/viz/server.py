@@ -186,11 +186,16 @@ def create_app(
         from hoyabit_agent.artifacts import output_manifest
         return JSONResponse(output_manifest(outcome))
 
+    async def health_endpoint(request: Request) -> Response:
+        return JSONResponse({"status": "ok", "service": "hoyabit-agent"})
+
     return Starlette(
         routes=[
             Route("/", index),
+            Route("/health", health_endpoint),
             Route("/run/{run_id}", show_run),
             Route("/run/{run_id}/trace.json", run_json),
+            Route("/api/v1/health", health_endpoint),
             Route("/api/v1/analyse", start_analysis, methods=["POST"]),
             Route("/api/v1/stream_trace", stream_trace),
             Route("/api/v1/runs/{run_id}", run_api),

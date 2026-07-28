@@ -77,7 +77,9 @@ class PostgresAnalysisStore:
         return cls(database_url())
 
     async def _connect(self) -> psycopg.AsyncConnection[Any]:
-        return await psycopg.AsyncConnection.connect(self._url, row_factory=dict_row)
+        return await psycopg.AsyncConnection.connect(
+            self._url, row_factory=dict_row, connect_timeout=2
+        )
 
     async def migrate(self) -> None:
         """Apply the idempotent database schema."""

@@ -189,6 +189,21 @@ def create_app(
     async def health_endpoint(request: Request) -> Response:
         return JSONResponse({"status": "ok", "service": "hoyabit-agent"})
 
+    async def list_runs_api(request: Request) -> Response:
+        try:
+            run_ids = await store.recent(limit=20)
+            runs = []
+            for rid in run_ids:
+                try:
+                    outcome = await store.load(rid)
+                    if outcome is not None:
+                        runs.append(outcome_payload(outcome))
+                except Exception:  # noqa: BLE001
+                    pass
+            return JSONResponse({"runs": runs})
+        except Exception:  # noqa: BLE001
+            return JSONResponse({"runs": []})
+
     return Starlette(
         routes=[
             Route("/", index),
@@ -196,6 +211,7 @@ def create_app(
             Route("/run/{run_id}", show_run),
             Route("/run/{run_id}/trace.json", run_json),
             Route("/api/v1/health", health_endpoint),
+            Route("/api/v1/runs", list_runs_api),
             Route("/api/v1/analyse", start_analysis, methods=["POST"]),
             Route("/api/v1/stream_trace", stream_trace),
             Route("/api/v1/runs/{run_id}", run_api),
@@ -234,33 +250,37 @@ code{{background:#f3f4f6;padding:1px 6px;border-radius:4px}}
 class ResilientAnalysisStore:
     """自動容錯 Store：當 Postgres 連不上時，自動降級使用記憶體 Store。"""
 
-    def __init__(self, primary: AnalysisStore, fallback: AnalysisStore) -> None:
+    def __init__(self, primary: AnalysisStore, fallback: AnalysisStore, is_online: bool = True) -> None:
         self._primary = primary
         self._fallback = fallback
+        self.is_online = is_online
 
     async def save(self, outcome: AnalysisOutcome) -> None:
-        try:
-            await self._primary.save(outcome)
-        except Exception:  # noqa: BLE001
-            pass
+        if self.is_online:
+            try:
+                await self._primary.save(outcome)
+            except Exception:  # noqa: BLE001
+                self.is_online = False
         await self._fallback.save(outcome)
 
     async def load(self, run_id: str) -> AnalysisOutcome | None:
-        try:
-            result = await self._primary.load(run_id)
-            if result is not None:
-                return result
-        except Exception:  # noqa: BLE001
-            pass
+        if self.is_online:
+            try:
+                result = await self._primary.load(run_id)
+                if result is not None:
+                    return result
+            except Exception:  # noqa: BLE001
+                self.is_online = False
         return await self._fallback.load(run_id)
 
     async def recent(self, limit: int = 20) -> tuple[str, ...]:
-        try:
-            results = await self._primary.recent(limit)
-            if results:
-                return results
-        except Exception:  # noqa: BLE001
-            pass
+        if self.is_online:
+            try:
+                results = await self._primary.recent(limit)
+                if results:
+                    return results
+            except Exception:  # noqa: BLE001
+                self.is_online = False
         return await self._fallback.recent(limit)
 
 
@@ -302,11 +322,12 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
                 request, sources, model, run_id=run_id, on_trace=on_trace
             )
 
+    is_online = await reachable(timeout=1.5)
     fallback_store = InMemoryAnalysisStore()
     postgres_store = PostgresAnalysisStore.from_environment()
-    store = ResilientAnalysisStore(postgres_store, fallback_store)
+    store = ResilientAnalysisStore(postgres_store, fallback_store, is_online=is_online)
 
-    if await reachable(timeout=1.5):
+    if is_online:
         logging.info("Connected to PostgreSQL analysis store.")
     else:
         logging.info("PostgreSQL unreachable on 5433/5432. Falling back to InMemoryAnalysisStore.")

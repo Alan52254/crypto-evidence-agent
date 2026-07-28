@@ -14,11 +14,21 @@ export const runtime = "nodejs";
  */
 export async function GET(request: Request): Promise<Response> {
   try {
-    // The Python backend's index page lists run_ids as links.
-    // We scrape the HTML to get the list, then fetch each run's JSON.
+    // 1. Try direct high-performance API endpoint from Python backend
+    const apiRes = await fetch(`${BACKEND_URL}/api/v1/runs`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (apiRes.ok) {
+      const data = await apiRes.json();
+      return Response.json(data);
+    }
+
+    // 2. Fallback to HTML index scraping if legacy backend version is running
     const indexRes = await fetch(`${BACKEND_URL}/`, {
       cache: "no-store",
-      signal: request.signal,
+      signal: AbortSignal.timeout(3000),
     });
 
     if (!indexRes.ok) {
@@ -26,7 +36,6 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     const html = await indexRes.text();
-    // Extract run_ids from links: <a href="/run/{run_id}">
     const matches = [...html.matchAll(/href="\/run\/([^"]+)"/g)];
     const runIds = matches.map((m) => m[1]);
 
@@ -34,12 +43,12 @@ export async function GET(request: Request): Promise<Response> {
       return Response.json({ runs: [] });
     }
 
-    // Fetch details for each run in parallel (limit to 20)
     const limited = runIds.slice(0, 20);
     const details = await Promise.allSettled(
       limited.map(async (id) => {
         const res = await fetch(`${BACKEND_URL}/api/v1/runs/${id}`, {
           cache: "no-store",
+          signal: AbortSignal.timeout(3000),
         });
         if (!res.ok) return null;
         return res.json();

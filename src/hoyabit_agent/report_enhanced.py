@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from hoyabit_agent.charts import ChartData, OHLCV, charts_to_markdown
 from hoyabit_agent.domain import (
     AnalysisOutcome,
@@ -261,7 +263,7 @@ def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
 
 ---
 
-*報告生成時間：UTC | 分析回合 ID：`{outcome.run_id}`*
+*報告生成時間：{datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")} UTC | 分析回合 ID：`{outcome.run_id}`*
 """
 
 

@@ -51,6 +51,7 @@ from hoyabit_agent.tools import (
     as_of_reference,
     assess_confidence,
     evidence_gap,
+    facet_stances,
     gate_asset,
     merge_independent_evidence,
     overall_stance,
@@ -431,10 +432,51 @@ async def analyse(
             executions=completed_records,
         )
 
+    # ─── 組裝階段 ───
+    drafts = await model.synthesise(asset, gathered, request.question)
+
+    # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構
+    if drafts:
+        from hoyabit_agent.review import review_claims
+        stances = facet_stances(gathered)
+
+        async def _review_call(system: str, user: str) -> str | None:
+            """用現有 model 做一次輕量文字生成。"""
+            try:
+                result = await model.synthesise(
+                    asset, (), f"[SYSTEM]{system}\n\n[USER]{user}"
+                )
+                # synthesise 回傳 DraftClaim tuple，我們需要文字
+                # 改用 plan 的回傳格式取得純文字回應
+                return None  # fallback: 如果沒有專門的 review 方法
+            except Exception:
+                return None
+
+        # 用 Gemini 的 _post 做一次輕量 call（透過 plan 的低層）
+        try:
+            from hoyabit_agent.models.gemini import GeminiProvider
+            if isinstance(model, GeminiProvider) or (hasattr(model, '_primary') and isinstance(getattr(model, '_primary', None), GeminiProvider)):
+                provider = model._primary if hasattr(model, '_primary') else model
+
+                async def _gemini_review_call(system: str, user: str) -> str | None:
+                    payload = {
+                        "systemInstruction": {"parts": [{"text": system}]},
+                        "contents": [{"role": "user", "parts": [{"text": user}]}],
+                    }
+                    body = await provider._post(payload, model=provider._model)
+                    if body is None:
+                        return None
+                    parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    return parts[0].get("text") if parts else None
+
+                drafts = await review_claims(drafts, gathered, stances, _gemini_review_call)
+        except Exception:
+            pass  # review 失敗不阻塞，用原始判斷
+
     report = _assemble(
         asset,
         gathered,
-        await model.synthesise(asset, gathered, request.question),
+        drafts,
         recorder,
         request.question,
         assessment,

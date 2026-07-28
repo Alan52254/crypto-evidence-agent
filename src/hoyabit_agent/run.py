@@ -51,6 +51,7 @@ from hoyabit_agent.tools import (
     as_of_reference,
     assess_confidence,
     evidence_gap,
+    facet_stances,
     gate_asset,
     merge_independent_evidence,
     overall_stance,
@@ -244,8 +245,8 @@ async def analyse(
         registry[name].spec for name in sorted(registry)
     )
 
-    # 預取低成本來源（CoinGecko、歷史 CSV）—— 不需要模型決定，直接先拿
-    prefetch_names = ("coingecko_market", "market_dataset_context")
+    # 預取低成本來源（CoinGecko、歷史 CSV、DefiLlama、Fear&Greed、FRED）—— 不需要模型決定，直接先拿
+    prefetch_names = ("coingecko_market", "market_dataset_context", "defillama_tvl", "fear_greed_index", "fred_macro")
     prefetch_results = await asyncio.gather(
         *(
             _invoke(
@@ -303,12 +304,6 @@ async def analyse(
 
         if not decision.invocations and not gathered and not used_fallback_plan:
             # 規劃層不可用（額度用罄、逾時）且**還沒蒐集到任何證據**。
-            # 此時直接收斂會產出空報告，但證據源本身是健康的，而且
-            # 「有哪些工具、要分析哪個標的」都是已知的 —— 不需要模型也能
-            # 組出一個合理的基線計畫。
-            #
-            # 只在第一輪動用一次：它是保底，不是常態路徑。後續輪次若模型
-            # 仍不回應，那代表推理能力確實不可用，應該帶著限制收斂。
             used_fallback_plan = True
             decision = PlanDecision(
                 invocations=_fallback_plan(tools, asset),
@@ -318,8 +313,18 @@ async def analyse(
                     "以免在證據源健康的情況下產出空報告。"
                 ),
             )
-            # 不在這裡記軌跡 —— 下游的 PLAN 節點會帶著這個 reason 與
-            # 實際排定的工具一起記錄，重複記會讓軌跡讀者以為跑了兩輪。
+        elif not decision.invocations and assessment.missing_facets and not used_fallback_plan:
+            # 模型覺得不需要更多資料（可能被預取的證據「騙」了），
+            # 但系統的 gap check 說還有缺口。強制用 fallback 補齊。
+            used_fallback_plan = True
+            missing = ", ".join(f.value for f in assessment.missing_facets)
+            decision = PlanDecision(
+                invocations=_fallback_plan(tools, asset),
+                reason=(
+                    f"模型未發出工具呼叫但仍有未關閉缺口（{missing}）。"
+                    "改用保底計畫補齊缺失面向。"
+                ),
+            )
 
         if not decision.invocations:
             # 模型婉拒再蒐集。**模型的婉拒不等於缺口已關閉** —— 若規則仍判定
@@ -431,10 +436,57 @@ async def analyse(
             executions=completed_records,
         )
 
+    # ─── 組裝階段 ───
+    drafts = await model.synthesise(asset, gathered, request.question)
+
+    # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構
+    if drafts:
+        from hoyabit_agent.review import review_claims, enforce_paired_disclosure
+        stances = facet_stances(gathered)
+
+        async def _review_call(system: str, user: str) -> str | None:
+            """用現有 model 做一次輕量文字生成。"""
+            try:
+                result = await model.synthesise(
+                    asset, (), f"[SYSTEM]{system}\n\n[USER]{user}"
+                )
+                # synthesise 回傳 DraftClaim tuple，我們需要文字
+                # 改用 plan 的回傳格式取得純文字回應
+                return None  # fallback: 如果沒有專門的 review 方法
+            except Exception:
+                return None
+
+        # 用 Gemini 的 _post 做一次輕量 call（透過 plan 的低層）
+        try:
+            from hoyabit_agent.models.gemini import GeminiProvider
+            if isinstance(model, GeminiProvider) or (hasattr(model, '_primary') and isinstance(getattr(model, '_primary', None), GeminiProvider)):
+                provider = model._primary if hasattr(model, '_primary') else model
+
+                async def _gemini_review_call(system: str, user: str) -> str | None:
+                    payload = {
+                        "systemInstruction": {"parts": [{"text": system}]},
+                        "contents": [{"role": "user", "parts": [{"text": user}]}],
+                    }
+                    body = await provider._post(payload, model=provider._model)
+                    if body is None:
+                        return None
+                    parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    return parts[0].get("text") if parts else None
+
+                drafts = await review_claims(drafts, gathered, stances, _gemini_review_call)
+        except Exception:
+            pass  # review 失敗不阻塞，用原始判斷
+
+    # Layer 1.1：規則式配對揭露（deterministic，不依賴 LLM）
+    # 即使 review LLM 漏掉配對規則，程式碼也會強制補上
+    if drafts:
+        from hoyabit_agent.review import enforce_paired_disclosure
+        drafts = enforce_paired_disclosure(drafts, gathered)
+
     report = _assemble(
         asset,
         gathered,
-        await model.synthesise(asset, gathered, request.question),
+        drafts,
         recorder,
         request.question,
         assessment,

@@ -45,6 +45,7 @@ DEFAULT_REASONING_MODEL = "gemini-3.6-flash"
 DEFAULT_LABOUR_MODEL = DEFAULT_REASONING_MODEL
 
 API_KEY_ENV = "GEMINI_API_KEY"
+API_KEY_2_ENV = "GEMINI_API_KEY_2"
 MODEL_ENV = "GEMINI_MODEL"
 LABOUR_MODEL_ENV = "GEMINI_LABOUR_MODEL"
 
@@ -73,12 +74,25 @@ class GeminiProvider:
         model: str = DEFAULT_REASONING_MODEL,
         labour_model: str = DEFAULT_LABOUR_MODEL,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        extra_keys: tuple[str, ...] = (),
     ) -> None:
         self._client = client
-        self._api_key = api_key
+        self._api_keys = [api_key] + [k for k in extra_keys if k]
+        self._current_key_index = 0
         self._model = model
         self._labour_model = labour_model
         self._timeout_seconds = timeout_seconds
+
+    @property
+    def _api_key(self) -> str:
+        return self._api_keys[self._current_key_index]
+
+    def _rotate_key(self) -> bool:
+        """切換到下一把 key。回傳是否成功輪換（有其他 key）。"""
+        if len(self._api_keys) <= 1:
+            return False
+        self._current_key_index = (self._current_key_index + 1) % len(self._api_keys)
+        return True
 
     @classmethod
     def from_environment(cls, client: httpx.AsyncClient) -> GeminiProvider | None:
@@ -88,7 +102,13 @@ class GeminiProvider:
             return None
         configured_model = os.environ.get(MODEL_ENV, DEFAULT_REASONING_MODEL).strip()
         configured_labour = os.environ.get(LABOUR_MODEL_ENV, DEFAULT_LABOUR_MODEL).strip()
-        return cls(client, api_key, model=configured_model, labour_model=configured_labour)
+        extra_key = os.environ.get(API_KEY_2_ENV, "").strip()
+        return cls(
+            client, api_key,
+            model=configured_model,
+            labour_model=configured_labour,
+            extra_keys=(extra_key,) if extra_key else (),
+        )
 
     # -- 推理層 ---------------------------------------------------------
 
@@ -186,7 +206,10 @@ class GeminiProvider:
     # -- 傳輸 -----------------------------------------------------------
 
     async def _post(self, payload: dict[str, Any], *, model: str) -> dict[str, Any] | None:
-        """Post to Gemini, retrying only temporary quota and service failures."""
+        """Post to Gemini, retrying only temporary quota and service failures.
+
+        429 時自動輪換到下一把 API key，等於額度翻倍。
+        """
         url = f"{BASE_URL}/models/{model}:generateContent"
         for attempt in range(MAX_TRANSIENT_ATTEMPTS):
             try:
@@ -204,7 +227,15 @@ class GeminiProvider:
                     return None
                 return body if isinstance(body, dict) else None
 
-            transient = response.status_code == 429 or response.status_code >= 500
+            if response.status_code == 429:
+                # 先嘗試切換 key，如果有其他 key 可用就立刻重試
+                if self._rotate_key():
+                    continue  # 用新 key 立刻重試，不等待
+                # 沒有其他 key 了，等一下再試
+                await asyncio.sleep(_retry_delay(response, attempt))
+                continue
+
+            transient = response.status_code >= 500
             if not transient or attempt + 1 >= MAX_TRANSIENT_ATTEMPTS:
                 return None
             await asyncio.sleep(_retry_delay(response, attempt))

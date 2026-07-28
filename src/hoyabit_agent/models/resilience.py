@@ -16,8 +16,8 @@ from hoyabit_agent.seams import GatherContext, ModelProvider, PlanDecision, Tool
 
 logger = logging.getLogger("hoyabit_agent.models.resilience")
 
-MAX_RETRIES_PER_PROVIDER = 1
-RETRY_DELAY_SECONDS = 1.0
+MAX_RETRIES_PER_PROVIDER = 2
+RETRY_DELAY_SECONDS = 60.0  # Gemini 免費層 429 需等至少 60 秒才解除
 
 
 class ResilientModelAdapter:
@@ -27,9 +27,13 @@ class ResilientModelAdapter:
         self,
         primary: ModelProvider,
         secondary: ModelProvider | None = None,
+        retry_delay: float = RETRY_DELAY_SECONDS,
+        max_retries: int = MAX_RETRIES_PER_PROVIDER,
     ) -> None:
         self._primary = primary
         self._secondary = secondary
+        self._retry_delay = retry_delay
+        self._max_retries = max_retries
 
     async def plan(
         self,
@@ -55,17 +59,16 @@ class ResilientModelAdapter:
         evidence: tuple[Evidence, ...],
         question: str = "請分析當前市場狀況",
     ) -> tuple[DraftClaim, ...]:
-        """執行 synthesise()：優先使用 Primary，失敗時切換至 Secondary。"""
+        """執行 synthesise()：只用 Primary（Gemini），不 fallback 到 Secondary。
+
+        原因：Groq (Llama 70B) 的中文金融推理與 structured output 品質
+        不足以產出可用的 claims，fallback 到它等於浪費時間。
+        429 時寧可等 60 秒再試 Gemini，也比拿 Groq 的空結果好。
+        """
         claims = await self._try_provider_synthesise(self._primary, asset, evidence, question, "Primary")
         if claims:
             return claims
-
-        if self._secondary is not None:
-            logger.warning("Primary Model synthesise() 未產出 claims，嘗試 Secondary Model")
-            sec_claims = await self._try_provider_synthesise(self._secondary, asset, evidence, question, "Secondary")
-            if sec_claims:
-                return sec_claims
-
+        # 不 fallback 到 secondary — 直接回空讓 run.py 走事實層降級
         return ()
 
     async def label(
@@ -92,7 +95,7 @@ class ResilientModelAdapter:
         tools: tuple[ToolSpec, ...],
         label: str,
     ) -> PlanDecision | None:
-        for attempt in range(MAX_RETRIES_PER_PROVIDER + 1):
+        for attempt in range(self._max_retries + 1):
             try:
                 decision = await provider.plan(context, tools)
                 if decision.invocations or not _is_rate_limit_or_empty(decision.reason):
@@ -100,8 +103,8 @@ class ResilientModelAdapter:
             except Exception as exc:
                 logger.warning(f"[{label}] plan() 嘗試 #{attempt+1} 發生例外: {exc}")
 
-            if attempt < MAX_RETRIES_PER_PROVIDER:
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
+            if attempt < self._max_retries:
+                await asyncio.sleep(self._retry_delay)
         return None
 
     async def _try_provider_synthesise(
@@ -112,7 +115,7 @@ class ResilientModelAdapter:
         question: str,
         label: str,
     ) -> tuple[DraftClaim, ...]:
-        for attempt in range(MAX_RETRIES_PER_PROVIDER + 1):
+        for attempt in range(self._max_retries + 1):
             try:
                 claims = await provider.synthesise(asset, evidence, question)
                 if claims:
@@ -120,8 +123,8 @@ class ResilientModelAdapter:
             except Exception as exc:
                 logger.warning(f"[{label}] synthesise() 嘗試 #{attempt+1} 發生例外: {exc}")
 
-            if attempt < MAX_RETRIES_PER_PROVIDER:
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
+            if attempt < self._max_retries:
+                await asyncio.sleep(self._retry_delay)
         return ()
 
     async def _try_provider_label(

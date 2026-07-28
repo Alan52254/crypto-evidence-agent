@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from hoyabit_agent.charts import ChartData, OHLCV, charts_to_markdown
 from hoyabit_agent.domain import (
     AnalysisOutcome,
@@ -105,6 +107,18 @@ def _format_window(report: Report) -> str:
     if report.analysis_window_end:
         return f"截至 {report.analysis_window_end.strftime('%Y-%m-%d %H:%M UTC')}"
     return "未知"
+
+
+def _confidence_breakdown(report: Report) -> str:
+    """置信度分項數字 — 讓 66% 這個數字可被拆解檢視。"""
+    conf = report.confidence
+    if not isinstance(conf, Confidence):
+        return ""
+    return (
+        f"\n  - 獨立性={conf.independence:.0%} | 覆蓋={conf.coverage:.0%} | "
+        f"時效={conf.freshness:.0%} | 一致性={conf.agreement:.0%} | "
+        f"完整性={conf.completeness:.0%} → **{conf.value:.0%}**"
+    )
 
 
 def _layered_claims(report: Report) -> str:
@@ -205,7 +219,6 @@ def _investor_insights(report: Report) -> str:
     lines.append("")
 
     lines.append("> ⚠️ **免責聲明**：本報告由自動化系統依公開資料生成，僅供資訊參考，不構成投資建議。")
-    lines.append("> HOYA BIT 提供 100% 法幣銀行信託隔離保障。")
 
     return "\n".join(lines)
 
@@ -236,18 +249,24 @@ def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
 
     # 已知限制**動態**產生自本回合實際計算的 report.limitations ——
     # 不再寫死「社群情緒未接入」這類宣稱,否則即時模式下系統已抓到情緒資料時
-    # 報告會自打臉。無動態限制時,只陳述恆為真的分析邊界。
+    # 報告會自打臉。無動態限制時,從 watch claims 提取限制聲明。
     if report.limitations:
         limitation_lines = "\n".join(f"- {line}" for line in report.limitations)
     else:
-        limitation_lines = "- 本回合未偵測到需特別聲明的資料或推理限制"
+        # 從 watch claims 提取限制聲明（它們通常包含「缺乏」「不足」等資訊）
+        from hoyabit_agent.domain import ClaimRole
+        watch_claims = [c for c in report.claims if c.role == ClaimRole.WATCH]
+        if watch_claims:
+            limitation_lines = "\n".join(f"- {c.text[:150]}" for c in watch_claims)
+        else:
+            limitation_lines = "- 本回合未偵測到需特別聲明的資料或推理限制"
 
     return f"""## 📐 方法論
 
 - **分析框架**：ReAct (Reasoning + Acting) 循環推理
 - **推理步驟**：{trace_steps} 步
 - **證據來源**：{", ".join(sorted(sources_used)) or "N/A"}
-- **信心度計算**：獨立性 25% + 覆蓋 25% + 時效 20% + 一致性 20% + 完整性 10%
+- **信心度計算**：獨立性 25% + 覆蓋 25% + 時效 20% + 一致性 20% + 完整性 10%{_confidence_breakdown(report)}
 - **引用檢核**：所有判斷必須掛載真實存在的證據 ID，否則系統丟棄
 
 ### 已知限制
@@ -256,7 +275,7 @@ def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
 
 ---
 
-*報告生成時間：UTC | 分析回合 ID：`{outcome.run_id}`*
+*報告生成時間：{datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")} UTC | 分析回合 ID：`{outcome.run_id}`*
 """
 
 

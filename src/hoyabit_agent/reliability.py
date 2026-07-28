@@ -40,9 +40,10 @@ _HIGH_PREFIXES = (
     "binance",  # 交易所原始端點（舊格式，保留相容性）
     "bnc-",  # 交易所原始端點（BNC-SPOT-*, BNC-PERP-*）
     "dataset",  # 競賽 OHLCV
-    "hoyabit-",  # 本所自家聚合指標（一手來源）
+    "hoyabit-",  # 本所自家聯合指標（一手來源）
     "official",  # 官方公告來源
     "ethereum-blog",
+    "fred",  # 美國聯邦儲備經濟數據（政府官方）
 )
 
 _MEDIUM_PREFIXES = (
@@ -51,6 +52,8 @@ _MEDIUM_PREFIXES = (
     "blocktempo",
     "blockworks",
     "coingecko",
+    "defillama",
+    "fear-greed",
 )
 
 
@@ -128,6 +131,26 @@ def weighted_source_count(evidence: tuple[Evidence, ...]) -> float:
         # 事件鍵把跨證據、跨面向的同一事件連起來。
         if item.event_key is not None:
             union(sources[0], f"event:{item.event_key}")
+
+    # 同一個 API endpoint 產出的多個指標歸為同一來源 ——
+    # BNC-SPOT-BTC-1d-SMA60 和 BNC-SPOT-BTC-1d-RSI14 都來自同一次 klines API call，
+    # 不應算成兩個獨立來源。以 source_id 的前 3 段（如 "bnc-spot-btc"）做歸併。
+    prefix_groups: dict[str, list[str]] = {}
+    for source_id in tiers:
+        parts = source_id.casefold().split("-")
+        # BNC-SPOT-BTC-1d-SMA60 → prefix = "bnc-spot-btc"
+        # BNC-PERP-BTC-FUNDING → prefix = "bnc-perp-btc"
+        # FRED-FEDFUNDS → prefix = "fred"
+        if len(parts) >= 3 and parts[0] in ("bnc",):
+            prefix = "-".join(parts[:3])
+        elif parts[0] in ("fred",):
+            prefix = "fred"
+        else:
+            continue
+        prefix_groups.setdefault(prefix, []).append(source_id)
+    for group in prefix_groups.values():
+        for source_id in group[1:]:
+            union(group[0], source_id)
 
     clusters: dict[str, ReliabilityTier] = {}
     for source_id, tier in tiers.items():

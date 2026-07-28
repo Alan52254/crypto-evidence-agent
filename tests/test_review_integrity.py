@@ -71,7 +71,7 @@ class TestPairedDisclosure:
     """Layer 1.1: 配對指標必須強制揭露（規則式，不依賴 LLM）。"""
 
     def test_sma200_cited_without_sma60_gets_supplemented(self) -> None:
-        """引用 SMA200 但漏了 SMA60 → 程式碼強制附上 SMA60。"""
+        """引用 SMA200 但漏了 SMA60 → 程式碼強制附上 SMA60 文字 + evidence_id。"""
         evidence = (
             _make_evidence("BNC-SPOT-BTC-1d-SMA60", Facet.TECHNICAL, +0.1),
             _make_evidence("BNC-SPOT-BTC-1d-SMA200", Facet.TECHNICAL, -0.5),
@@ -87,6 +87,8 @@ class TestPairedDisclosure:
         result = enforce_paired_disclosure(claims, evidence)
         # SMA60 的數值應該被強制附上
         assert "SMA60" in result[0].text, f"Expected SMA60 in text, got: {result[0].text}"
+        # SMA60 的 evidence_id 也應該被加入
+        assert "BNC-SPOT-BTC-1d-SMA60" in result[0].evidence_ids
 
     def test_both_cited_no_change(self) -> None:
         """兩者都引用了 → 不觸發補充。"""

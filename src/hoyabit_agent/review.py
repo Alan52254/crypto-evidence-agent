@@ -239,15 +239,19 @@ def enforce_paired_disclosure(
                 for missing_kw in missing_members:
                     if missing_kw in available:
                         supplement = available[missing_kw]
+                        # 找到缺失成員的完整 evidence ID
+                        missing_eid = supplement.split(":")[0]
                         # 在 text 末尾附上缺失的配對指標
                         addition = f"（對照：{supplement}）"
                         if addition not in claim.text:
+                            # 同時把 evidence_id 加入引用列表
+                            new_ids = (*claim.evidence_ids, missing_eid)
                             result[i] = DraftClaim(
                                 text=f"{claim.text} {addition}",
-                                evidence_ids=claim.evidence_ids,
+                                evidence_ids=new_ids,
                                 facet=claim.facet,
                                 role=claim.role,
                             )
-                            claim = result[i]  # 更新引用以便同一 claim 的多個群組都能補
+                            claim = result[i]
 
     return tuple(result)

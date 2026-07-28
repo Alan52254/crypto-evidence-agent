@@ -109,6 +109,18 @@ def _format_window(report: Report) -> str:
     return "未知"
 
 
+def _confidence_breakdown(report: Report) -> str:
+    """置信度分項數字 — 讓 66% 這個數字可被拆解檢視。"""
+    conf = report.confidence
+    if not isinstance(conf, Confidence):
+        return ""
+    return (
+        f"\n  - 獨立性={conf.independence:.0%} | 覆蓋={conf.coverage:.0%} | "
+        f"時效={conf.freshness:.0%} | 一致性={conf.agreement:.0%} | "
+        f"完整性={conf.completeness:.0%} → **{conf.value:.0%}**"
+    )
+
+
 def _layered_claims(report: Report) -> str:
     """按 fact → inference → conclusion 分層呈現。"""
     lines = ["## 📋 核心判斷（分層結構）\n"]
@@ -254,7 +266,7 @@ def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
 - **分析框架**：ReAct (Reasoning + Acting) 循環推理
 - **推理步驟**：{trace_steps} 步
 - **證據來源**：{", ".join(sorted(sources_used)) or "N/A"}
-- **信心度計算**：獨立性 25% + 覆蓋 25% + 時效 20% + 一致性 20% + 完整性 10%
+- **信心度計算**：獨立性 25% + 覆蓋 25% + 時效 20% + 一致性 20% + 完整性 10%{_confidence_breakdown(report)}
 - **引用檢核**：所有判斷必須掛載真實存在的證據 ID，否則系統丟棄
 
 ### 已知限制

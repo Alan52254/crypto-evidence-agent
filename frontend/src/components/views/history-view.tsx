@@ -293,13 +293,12 @@ export function HistoryView({ onLoadRun }: HistoryViewProps) {
           .map((run: Record<string, unknown>) => backendRunToHistoryItem(run))
           .filter(Boolean) as HistoryItem[];
 
+        setBackendConnected(true);
         if (runs.length > 0) {
           setHistory(runs);
-          setBackendConnected(true);
         } else {
-          // No runs from backend — use mock data as demo
+          // No runs from backend yet — show mock data as demo
           setHistory(MOCK_HISTORY);
-          setBackendConnected(false);
         }
       } else {
         setHistory(MOCK_HISTORY);
@@ -350,7 +349,9 @@ export function HistoryView({ onLoadRun }: HistoryViewProps) {
             <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
             <span>
               {backendConnected
-                ? `已連接後端 Agent — 顯示 ${history.length} 筆真實分析記錄`
+                ? history.length > 0 && history !== MOCK_HISTORY
+                  ? `已連接後端 Agent — 顯示 ${history.length} 筆真實分析記錄`
+                  : "已連接後端 Agent — 目前無歷史分析紀錄，顯示示範資料 (Demo Mode)。在 Workspace 發起分析將即時記錄於此。"
                 : "後端未連接，目前顯示示範資料 (Demo Mode)。啟動 Python 後端以載入真實歷史。"}
             </span>
           </div>

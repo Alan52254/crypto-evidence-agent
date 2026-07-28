@@ -437,7 +437,7 @@ async def analyse(
 
     # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構
     if drafts:
-        from hoyabit_agent.review import review_claims
+        from hoyabit_agent.review import review_claims, enforce_paired_disclosure
         stances = facet_stances(gathered)
 
         async def _review_call(system: str, user: str) -> str | None:
@@ -472,6 +472,12 @@ async def analyse(
                 drafts = await review_claims(drafts, gathered, stances, _gemini_review_call)
         except Exception:
             pass  # review 失敗不阻塞，用原始判斷
+
+    # Layer 1.1：規則式配對揭露（deterministic，不依賴 LLM）
+    # 即使 review LLM 漏掉配對規則，程式碼也會強制補上
+    if drafts:
+        from hoyabit_agent.review import enforce_paired_disclosure
+        drafts = enforce_paired_disclosure(drafts, gathered)
 
     report = _assemble(
         asset,

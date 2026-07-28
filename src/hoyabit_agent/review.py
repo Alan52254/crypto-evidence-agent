@@ -166,16 +166,15 @@ def _validate_revision(original: DraftClaim, revised_text: str) -> bool:
     """3.2 輸出約束驗證 — 防止 review LLM 亂改。
 
     拒絕條件：
-    - revised_text 引入了原始 text 沒有的數字
+    - revised_text 引入了原始 text 沒有的數字（零容忍）
     - revised_text 長度跟原始差異超過 50%（改太多了）
     """
-    # 提取數字
+    # 提取數字 — 零容忍：不允許任何新數字
     original_numbers = set(re.findall(r'\d+\.?\d*', original.text))
     revised_numbers = set(re.findall(r'\d+\.?\d*', revised_text))
     new_numbers = revised_numbers - original_numbers
 
-    # 允許小量新數字（如 review 把 "1-4週" 拆成文字）但不允許大量
-    if len(new_numbers) > 2:
+    if new_numbers:
         return False
 
     # 長度變化不超過 50%
@@ -186,3 +185,69 @@ def _validate_revision(original: DraftClaim, revised_text: str) -> bool:
             return False
 
     return True
+
+
+# ─── Layer 1.1: 規則式配對揭露（不依賴 LLM）──────────────────────
+
+# 配對指標群組：同群組的成員必須共同出現在同一判斷中
+PAIRED_EVIDENCE_GROUPS: dict[str, tuple[str, ...]] = {
+    "moving_averages": ("SMA60", "SMA200"),
+    "rates": ("FEDFUNDS", "DGS10"),
+}
+
+
+def enforce_paired_disclosure(
+    claims: tuple[DraftClaim, ...],
+    evidence: tuple[Evidence, ...],
+) -> tuple[DraftClaim, ...]:
+    """規則式配對揭露 — 不依賴 LLM，程式碼層面強制。
+
+    若某個判斷引用了配對群組的一個成員但沒引用另一個，
+    且另一個成員確實存在於 evidence 中，則在該判斷的 text 末尾
+    強制附上缺失成員的數值摘要。
+
+    這是 deterministic 的，LLM 不照做也沒關係。
+    """
+    # 建立 evidence ID → summary 的查找表
+    evidence_map: dict[str, str] = {e.id: e.summary for e in evidence}
+
+    # 建立群組 → 實際存在的 evidence IDs 映射
+    group_evidence: dict[str, dict[str, str]] = {}
+    for group_name, keywords in PAIRED_EVIDENCE_GROUPS.items():
+        group_evidence[group_name] = {}
+        for eid, summary in evidence_map.items():
+            for kw in keywords:
+                if kw in eid.upper():
+                    group_evidence[group_name][kw] = f"{eid}: {summary}"
+                    break
+
+    result = list(claims)
+    for i, claim in enumerate(result):
+        # 檢查這個 claim 的 evidence_ids 引用了哪些配對群組成員
+        cited_ids_upper = " ".join(claim.evidence_ids).upper()
+
+        for group_name, keywords in PAIRED_EVIDENCE_GROUPS.items():
+            available = group_evidence.get(group_name, {})
+            if len(available) < 2:
+                continue  # 這個群組根本沒有兩個成員可配對
+
+            cited_members = [kw for kw in keywords if kw in cited_ids_upper]
+            missing_members = [kw for kw in keywords if kw not in cited_ids_upper]
+
+            # 只有「引用了一個但漏了另一個」才觸發
+            if cited_members and missing_members:
+                for missing_kw in missing_members:
+                    if missing_kw in available:
+                        supplement = available[missing_kw]
+                        # 在 text 末尾附上缺失的配對指標
+                        addition = f"（對照：{supplement}）"
+                        if addition not in claim.text:
+                            result[i] = DraftClaim(
+                                text=f"{claim.text} {addition}",
+                                evidence_ids=claim.evidence_ids,
+                                facet=claim.facet,
+                                role=claim.role,
+                            )
+                            claim = result[i]  # 更新引用以便同一 claim 的多個群組都能補
+
+    return tuple(result)

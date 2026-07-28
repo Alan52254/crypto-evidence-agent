@@ -40,6 +40,7 @@ _HIGH_PREFIXES = (
     "binance",  # 交易所原始端點（舊格式，保留相容性）
     "bnc-",  # 交易所原始端點（BNC-SPOT-*, BNC-PERP-*）
     "dataset",  # 競賽 OHLCV
+    "hoyabit-",  # 本所自家聚合指標（一手來源）
     "official",  # 官方公告來源
     "ethereum-blog",
 )

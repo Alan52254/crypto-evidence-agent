@@ -37,6 +37,10 @@ packages = ["src/hoyabit_agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 讓 repo root 可匯入，使 `tests` 成為隱式命名空間套件 ——
+# test_gaps / test_claim_ledger 以 `from tests.test_reliability import evidence_from`
+# 共用輔助函式，少了這行整個套件無法 collect。
+pythonpath = ["."]
 asyncio_mode = "auto"
 addopts = "-q"
 markers = [

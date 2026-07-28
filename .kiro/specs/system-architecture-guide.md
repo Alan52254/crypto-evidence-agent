@@ -4,7 +4,7 @@
 
 ---
 
-## 1. 整體架構：三層接縫 (Three Seams)
+## 1. 整體架構：四個接縫 (Four Seams)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -28,6 +28,14 @@
 - 新增資料源只要實作 `EvidenceSource` protocol
 - 換模型只要實作 `ModelProvider` protocol
 
+**接縫外面還有一圈「確定性層」** —— `run.py` 的骨架呼叫這些純函式模組，
+它們不押在模型回應上，見第 2.5 節：
+- `question.py` 題型分類 → 決定「這一題需要什麼證據」
+- `gaps.py` 缺口規則 → 決定「什麼算蒐集完成」（收斂由規則判定，不由模型說了算）
+- `reliability.py` 來源分級 → 依 source_id 前綴給 HIGH/MEDIUM/LOW 權重
+- `claim_ledger.py` 判斷驗證 → 撰寫與驗證分離，避免自我確認偏誤
+- `as_of_date` / `AnalysisRegime` → 回測 vs 即時的實體鎖，防「偷看未來」
+
 ---
 
 ## 2. 金融分析：現在做了什麼、還缺什麼
@@ -41,14 +49,35 @@
 | **情緒面** | News RSS (CoinDesk/CoinTelegraph) | Gemini 批次打分 (label 方法) |
 | **基本面** | 新聞中的事件（升級/監管/解鎖） | 由 label(aspect=FUNDAMENTAL) 分離出事件影響 |
 
-### 金融分析的缺口 (需要優化)
+### 金融分析的缺口
 
-1. **即時行情 vs 歷史行情混用** — 競賽 CSV 截止於 2026-05-31，Binance 是即時的。報告需要明確標示 as-of time
-2. **鏈上數據缺失** — 沒有 Glassnode/DefiLlama 的 TVL、巨鯨地址流入、質押量
-3. **技術指標單薄** — 只有 RSI/EMA/Volume Z-score，缺布林通道、MACD、成交量加權均價
-4. **矛盾檢測被動** — 目前只在 evidence_gap() 裡偵測 contradiction_facets，沒有主動搜尋反方證據
-5. **信心度權重固定** — 規格要求 來源品質25% + 覆蓋25% + 時效20% + 一致性20% + 完整性10%，目前只做了一致性
-6. **跨幣比較** — domain.py 的 Report 只支持單幣，比較題型需要 fan-out 再合併
+已解決（✅）與仍待優化（🔧）：
+
+1. ✅ **即時 vs 歷史行情混用** — 已導入 `as_of_date` / `AnalysisRegime`（回測/即時），
+   回測模式在建 registry 時就過濾掉不合規的即時來源，實體鎖防「偷看未來」（ADR 0005）。
+2. 🔧 **鏈上數據缺失** — 仍無 Glassnode/DefiLlama 的 TVL、巨鯨流入、質押量。
+3. 🔧 **技術指標單薄** — 仍以 RSI/EMA/Volume 為主，缺布林通道、MACD、VWAP。
+4. ✅ **矛盾檢測被動** — synthesis prompt 已加入主動反方搜尋規則，且 `gaps.py`
+   在方向一面倒時阻止收斂；矛盾被「揭露」而非「阻擋」。
+5. 🔧 **信心度權重** — 已從單一「一致性」擴充為多維（來源可信度 via `reliability.py`、
+   獨立來源數、時效、矛盾），但尚未完全對齊規格的固定百分比權重。
+6. ✅ **跨幣比較** — `question.py` 已有 `COMPARATIVE_ANALYSIS` 題型；比較題不強求四面全齊，
+   避免兩幣 × 四面吃光 15 分鐘預算。
+
+### 2.5 確定性驗證層（run.py 骨架呼叫的純函式）
+
+模型負責「規劃」與「撰寫」，但**收斂與驗證由不押在模型回應上的規則決定** ——
+這是避免自我確認偏誤的核心設計。
+
+| 模組 | 職責 | 為什麼是確定性 |
+|---|---|---|
+| `question.py` | 題型分類（MARKET_SUMMARY / HYPOTHESIS_VERIFICATION / COMPARATIVE）| 誤判題型會毀掉整輪蒐集，不能押在模型 |
+| `gaps.py` | 題型導向的缺口判定與收斂條件 | 「什麼算蒐集完成」由規則說了算，不由模型說「我做完了」|
+| `reliability.py` | 來源可信度分級（依 source_id 前綴 HIGH/MEDIUM/LOW）| 同事件轉載併為一個來源，防止灌高獨立性 |
+| `claim_ledger.py` | 判斷三態驗證（supported / contested / unsupported）| **撰寫與驗證分離**；被拒絕的判斷保留為不確定性來源 |
+| `as_of_date` / `AnalysisRegime` | 回測 vs 即時的實體鎖 | 唯一合法的時鐘讀取點，錨定證據新鮮度與缺口時效 |
+
+這一層全部**無網路、無 mock 可測**，是測試金字塔的底座。
 
 ---
 
@@ -62,32 +91,43 @@ MCP (Model Context Protocol) 是讓 AI 工具（Kiro、Claude Desktop）能直�
 - "BTC 的 RSI 是用哪段 OHLCV 算的？"
 - "截至 2026-05-15 的 ETH 價格趨勢如何？"
 
-### 一份規格，三個消費者
+### 一份規格，四個消費者
 
 ```python
 # seams.py
 @dataclass(frozen=True)
 class ToolSpec:
-    name: str          # "binance_spot", "binance_derivatives", "market_dataset_context"
+    name: str          # "binance_spot", "crypto_news", "market_dataset_context"
     description: str   # 工具的用途描述
     parameters: JsonSchema  # JSON Schema 定義參數
 ```
 
 這一份 ToolSpec 同時被：
-1. **Gemini** 拿去當 `functionDeclarations` → 模型知道可以呼叫什麼
-2. **MCP Server** 拿去當 `inputSchema` → Kiro/Claude Desktop 知道工具介面
-3. **run.py 執行器** 拿去當路由表 → `registry[invocation.tool].fetch(...)`
+1. **Gemini** 拿去當 `functionDeclarations` → 推理層知道可以呼叫什麼
+2. **Groq/OpenAI 相容** 拿去當 `tools`（`_to_openai_tool`）→ 備援/容錯層看到同一組工具
+3. **MCP Server** 拿去當 `inputSchema` → Kiro/Claude Desktop 知道工具介面
+4. **run.py 執行器** 拿去當路由表 → `registry[invocation.tool].fetch(...)`
 
-**好處**：三方永遠一致，不可能出現「模型以為有個參數」但「MCP 沒暴露」的 bug。
+**好處**：四方永遠一致，不可能出現「模型以為有個參數」但「MCP 沒暴露」的 bug。
 
 ### 目前有哪些 MCP 工具？
 
-| 工具名稱 | 資料來源 | 回傳的證據面 |
-|----------|----------|-------------|
-| `binance_spot` | Binance 現貨 API (K線+盤口) | technical |
-| `binance_derivatives` | Binance 永續合約 (費率/OI/多空比) | positioning |
-| `news_rss` | CoinDesk/CoinTelegraph RSS | sentiment + fundamental |
-| `market_dataset_context` | 競賽 OHLCV CSV + pgvector 向量檢索 | technical |
+以 `ingest/runtime.py` 的 `build_competition_sources()` 為權威清單：
+
+| 工具名稱 | 資料來源 | 回傳的證據面 | 合規模式 |
+|----------|----------|-------------|---------|
+| `binance_spot` | Binance 現貨 API (K線+盤口) | technical + positioning | LIVE |
+| `binance_derivatives` | Binance 永續合約 (費率/OI/多空比) | positioning | LIVE |
+| `crypto_news` | CoinDesk/CoinTelegraph RSS | sentiment + fundamental | LIVE |
+| `extended_news` | 延伸新聞來源 | sentiment + fundamental | LIVE |
+| `official_announcements` | 官方公告 | fundamental | LIVE |
+| `coingecko_market` | CoinGecko Demo API | technical + positioning | LIVE |
+| `market_dataset_context` | 競賽 OHLCV CSV + pgvector 向量檢索 | technical | BACKTEST |
+
+`hoyabit_flow`（本所自家聚合指標，籌碼面）已備介面 + 示意資料，
+未掛進預設 live 堆疊（避免示意數字污染真實報告），未來真實 adapter 可直接替換。
+
+> ⚠️ 工具名稱以各 `Source.spec.name` 為唯一真實來源。若這張表與程式碼不符，以程式碼為準。
 
 ### 新增一個資料源要做什麼？
 

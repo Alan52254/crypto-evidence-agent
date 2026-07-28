@@ -223,13 +223,7 @@ html.dark .ai-card {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
 }
 
-/* ─── Accent Theme (personalization) ───
-   Orthogonal to light/dark: `--accent`/`--accent-2` drive the brand-accent
-   surfaces only (send button, AI avatar, active nav, logo mark) — never
-   heading/body ink (`text-primary` stays untouched). Classic theme's
-   defaults exactly reproduce the pre-existing primary/on-primary values,
-   so components that switch to `bg-accent`/`text-on-accent` look identical
-   until the user opts into Aurum. */
+/* ─── Accent Theme (personalization) ─── */
 :root {
   --accent: #191c1e;
   --on-accent: #ffffff;
@@ -240,159 +234,391 @@ html.dark .ai-card {
   --on-accent: #0f1218;
   --accent-2: #8b95a8;
 }
-html.theme-aurum {
-  --accent: #f5b93d;
-  --on-accent: #050506;
-  --accent-2: #a855f7;
+
+/* Light Mode Aurum Accent Variables */
+html:not(.dark).theme-aurum {
+  --accent: #7E22CE;
+  --on-accent: #ffffff;
+  --accent-2: #B8860B;
+}
+
+/* Dark Mode Aurum Accent Variables */
+html.dark.theme-aurum {
+  --accent: #FFD700;
+  --on-accent: #08060F;
+  --accent-2: #A855F7;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   AURUM 紫金主題 — Linear-inspired Deep Space with Ambient Light
-   琥珀金 (#F5B93D) = 互動與主視覺
-   蘭花紫 (#A855F7) = 氛圍與空間感
+   AURUM (紫金) 雙模商業級主題 — Light Neumorphic & Dark Obsidian Space
+   24K 真炫金 (#FFD700 / #FDB931 / #B8860B) + 皇家紫 (#A855F7 / #9333EA / #7E22CE)
+   支援白天模式 (Light Neumorphic Platinum) 與 深夜模式 (Dark Obsidian Space)
    ═══════════════════════════════════════════════════════════════════ */
 
-/* ─── 1. 深邃夜色底層 ─── */
-html.theme-aurum body {
-  background: #050506;
-  color: #e0e0e4;
+/* ─── 1. 全局金紫雙色漸層 Utility ─── */
+.aurum-gold-text,
+.gradient-aurum {
+  background: linear-gradient(135deg, #FFD700 0%, #FDB931 50%, #B8860B 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
 }
-html.theme-aurum .bg-background,
-html.theme-aurum .bg-surface {
-  background-color: #050506 !important;
-}
-html.theme-aurum .bg-surface\/95 {
-  background-color: rgba(5, 5, 6, 0.92) !important;
-  backdrop-filter: blur(12px) saturate(1.4);
-}
-html.theme-aurum .bg-surface-container-lowest {
-  background-color: #0a0a0c !important;
-}
-html.theme-aurum .bg-surface-container-low {
-  background-color: #0f0f12 !important;
-}
-html.theme-aurum .bg-surface-container {
-  background-color: #141418 !important;
-}
-html.theme-aurum .bg-surface-container-high {
-  background-color: #1a1a1f !important;
-}
-html.theme-aurum .bg-surface-container-highest {
-  background-color: #212127 !important;
+.dark .aurum-gold-text,
+.dark .gradient-aurum {
+  background: linear-gradient(135deg, #FFF5C0 0%, #FFD700 35%, #F5B93D 70%, #C88A15 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  text-shadow: 0 2px 12px rgba(255, 215, 0, 0.15);
 }
 
-/* ─── 2. 文字與色塊層次 ─── */
-html.theme-aurum .text-primary {
-  color: #f5b93d !important;
+.royal-purple-text,
+.gradient-royal {
+  background: linear-gradient(135deg, #A855F7 0%, #9333EA 50%, #7E22CE 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
 }
-html.theme-aurum .text-on-surface {
-  color: #e0e0e4 !important;
-}
-html.theme-aurum .text-on-surface-variant {
-  color: #8a8f98 !important;
-}
-html.theme-aurum .text-secondary {
-  color: #8b92a5 !important;
-}
-html.theme-aurum .text-outline {
-  color: #4a4e5a !important;
-}
-html.theme-aurum .text-on-primary {
-  color: #050506 !important;
+.dark .royal-purple-text,
+.dark .gradient-royal {
+  background: linear-gradient(135deg, #F3E8FF 0%, #D8B4FE 40%, #C084FC 75%, #9333EA 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
 }
 
-/* ─── 3. 邊框 ─── */
-html.theme-aurum .border-outline-variant {
-  border-color: rgba(255, 255, 255, 0.1) !important;
+.bg-gradient-royal {
+  background: linear-gradient(135deg, #A855F7 0%, #7E22CE 100%) !important;
+  color: #ffffff !important;
 }
-html.theme-aurum .border-outline-variant\/50 {
-  border-color: rgba(255, 255, 255, 0.05) !important;
-}
-html.theme-aurum .border-outline-variant\/60 {
-  border-color: rgba(255, 255, 255, 0.07) !important;
+.bg-gradient-aurum {
+  background: linear-gradient(135deg, #FFD700 0%, #B8860B 100%) !important;
+  color: #08060F !important;
 }
 
-/* ─── 4. 主色塊 ─── */
-html.theme-aurum .bg-primary {
-  background-color: #f5b93d !important;
+/* ═══════════════════════════════════════════════════════════════════
+   2. 白天模式 (Light Mode Neumorphic Warm Platinum Slate)
+   使用高質感柔和暖質白金 (#EEF2F6) 作為底色，完美襯托皇家紫與 24K 炫金
+   ═══════════════════════════════════════════════════════════════════ */
+html:not(.dark).theme-aurum body {
+  background-color: #EEF2F6;
+  color: #191c1e;
 }
-html.theme-aurum .bg-primary\/5 {
-  background-color: rgba(245, 185, 61, 0.05) !important;
+html:not(.dark).theme-aurum .bg-background,
+html:not(.dark).theme-aurum .bg-surface {
+  background-color: #EEF2F6 !important;
 }
-html.theme-aurum .bg-primary\/10 {
-  background-color: rgba(245, 185, 61, 0.12) !important;
+html:not(.dark).theme-aurum .bg-surface\/95 {
+  background-color: rgba(238, 242, 246, 0.95) !important;
+  backdrop-filter: blur(16px);
+}
+html:not(.dark).theme-aurum .bg-surface-container-lowest {
+  background-color: #F4F7FA !important;
+}
+html:not(.dark).theme-aurum .bg-surface-container-low {
+  background-color: #E6EBF2 !important;
+}
+html:not(.dark).theme-aurum .bg-surface-container {
+  background-color: #DCE3EE !important;
+}
+html:not(.dark).theme-aurum .bg-surface-container-high {
+  background-color: #D0D9E6 !important;
+}
+html:not(.dark).theme-aurum .bg-surface-container-highest {
+  background-color: #C2CEE0 !important;
 }
 
-/* ─── 5. 卡片：邊框亮線 + 擴散陰影 ─── */
-html.theme-aurum .ai-card {
-  background: linear-gradient(135deg, rgba(20, 20, 24, 0.95), rgba(10, 10, 12, 0.98)) !important;
-  border: 1px solid rgba(245, 185, 61, 0.12) !important;
+/* 白天模式文字與色塊 */
+html:not(.dark).theme-aurum .text-primary {
+  color: #7E22CE !important; /* 白天主色：皇家紫 */
+}
+html:not(.dark).theme-aurum .text-on-surface {
+  color: #191c1e !important;
+}
+html:not(.dark).theme-aurum .text-on-surface-variant {
+  color: #494551 !important;
+}
+html:not(.dark).theme-aurum .text-secondary {
+  color: #505f76 !important;
+}
+html:not(.dark).theme-aurum .text-outline {
+  color: #8a95a8 !important;
+}
+html:not(.dark).theme-aurum .text-on-primary {
+  color: #ffffff !important;
+}
+html:not(.dark).theme-aurum .border-outline-variant {
+  border-color: rgba(126, 34, 206, 0.16) !important;
+}
+html:not(.dark).theme-aurum .bg-primary {
+  background: linear-gradient(135deg, #A855F7 0%, #7E22CE 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(126, 34, 206, 0.25);
+}
+
+/* 白天模式 3D Neumorphic 浮雕與凹陷卡片 */
+html:not(.dark).theme-aurum .ai-card,
+html:not(.dark).theme-aurum .neumorphic-extruded {
+  background: #EEF2F6 !important;
+  border: 1px solid rgba(126, 34, 206, 0.14) !important;
   box-shadow:
-    0 2px 8px -2px rgba(0, 0, 0, 0.6),
-    0 0 20px -8px rgba(168, 85, 247, 0.1);
+    8px 8px 18px rgba(163, 177, 198, 0.55),
+    -8px -8px 18px rgba(255, 255, 255, 0.85) !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-html.theme-aurum .ai-card:hover {
-  border-color: rgba(245, 185, 61, 0.25) !important;
+html:not(.dark).theme-aurum .ai-card:hover,
+html:not(.dark).theme-aurum .neumorphic-extruded:hover {
+  border-color: rgba(126, 34, 206, 0.32) !important;
   box-shadow:
-    0 4px 16px -4px rgba(0, 0, 0, 0.7),
-    0 0 30px -10px rgba(168, 85, 247, 0.18);
+    10px 10px 22px rgba(163, 177, 198, 0.65),
+    -10px -10px 22px rgba(255, 255, 255, 0.95),
+    0 0 22px rgba(126, 34, 206, 0.18) !important;
 }
 
-/* ─── 6. 漸層標題文字 ─── */
-html.theme-aurum .aurum-gradient-text {
-  background: linear-gradient(180deg, #ffffff 0%, rgba(255, 255, 255, 0.75) 100%);
+html:not(.dark).theme-aurum .neumorphic-inset {
+  background: #EEF2F6 !important;
+  box-shadow:
+    inset 4px 4px 8px #c5ccd8,
+    inset -4px -4px 8px #ffffff !important;
+  border: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   3. 深夜模式 (Dark Mode Obsidian Space)
+   ═══════════════════════════════════════════════════════════════════ */
+html.dark.theme-aurum body {
+  background: #12141D;
+  color: #e2e8f0;
+}
+html.dark.theme-aurum .bg-background,
+html.dark.theme-aurum .bg-surface {
+  background-color: #12141D !important;
+}
+html.dark.theme-aurum .bg-surface\/95 {
+  background-color: rgba(18, 20, 29, 0.94) !important;
+  backdrop-filter: blur(16px) saturate(1.5);
+}
+html.dark.theme-aurum .bg-surface-container-lowest {
+  background-color: #0A0B10 !important;
+}
+html.dark.theme-aurum .bg-surface-container-low {
+  background-color: #181B28 !important;
+}
+html.dark.theme-aurum .bg-surface-container {
+  background-color: #202436 !important;
+}
+html.dark.theme-aurum .bg-surface-container-high {
+  background-color: #2A3047 !important;
+}
+html.dark.theme-aurum .bg-surface-container-highest {
+  background-color: #343B58 !important;
+}
+
+/* 深夜模式文字與色塊 */
+html.dark.theme-aurum .text-primary {
+  color: #FFD700 !important; /* 深夜主色：24K 炫金 */
+}
+html.dark.theme-aurum .text-on-surface {
+  color: #f1f5f9 !important;
+}
+html.dark.theme-aurum .text-on-surface-variant {
+  color: #94a3b8 !important;
+}
+html.dark.theme-aurum .text-secondary {
+  color: #a78bfa !important; /* Royal Purple secondary text tint */
+}
+html.dark.theme-aurum .text-outline {
+  color: #5b517e !important;
+}
+html.dark.theme-aurum .text-on-primary {
+  color: #08060F !important;
+}
+html.dark.theme-aurum .border-outline-variant {
+  border-color: rgba(255, 215, 0, 0.16) !important;
+}
+html.dark.theme-aurum .bg-primary {
+  background: linear-gradient(135deg, #FFD700 0%, #F5B93D 60%, #D4982E 100%) !important;
+  color: #08060F !important;
+  box-shadow: 0 0 15px -3px rgba(255, 215, 0, 0.35);
+}
+
+/* 深夜模式 3D Neumorphic 雙發光卡片 */
+html.dark.theme-aurum .ai-card,
+html.dark.theme-aurum .neumorphic-extruded {
+  background: linear-gradient(145deg, rgba(24, 27, 40, 0.96), rgba(12, 14, 22, 0.98)) !important;
+  border: 1px solid rgba(255, 215, 0, 0.2) !important;
+  box-shadow:
+    10px 10px 20px #0a0b10,
+    -10px -10px 20px #1e2230,
+    0 0 25px -5px rgba(168, 85, 247, 0.18) !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
+}
+html.dark.theme-aurum .ai-card:hover,
+html.dark.theme-aurum .neumorphic-extruded:hover {
+  border-color: rgba(255, 215, 0, 0.45) !important;
+  box-shadow:
+    12px 12px 24px #06070a,
+    -12px -12px 24px #24293c,
+    0 0 35px -5px rgba(168, 85, 247, 0.35),
+    0 0 20px -4px rgba(255, 215, 0, 0.15) !important;
+}
+
+html.dark.theme-aurum .neumorphic-inset {
+  background: #181B28 !important;
+  box-shadow:
+    inset 6px 6px 12px #0a0b10,
+    inset -6px -6px 12px #262c40 !important;
+  border: none !important;
+}
+
+/* ─── 4. 標題自動金紫雙色漸層 ─── */
+html.theme-aurum h1,
+html.theme-aurum h2.text-headline-lg,
+html.theme-aurum .font-bold.text-headline-lg {
+  background: linear-gradient(135deg, #FFD700 0%, #FDB931 50%, #B8860B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+html.dark.theme-aurum h1,
+html.dark.theme-aurum h2.text-headline-lg,
+html.dark.theme-aurum .font-bold.text-headline-lg {
+  background: linear-gradient(135deg, #FFF5C0 0%, #FFD700 35%, #F5B93D 70%, #C88A15 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* ─── 7. 滾動條 ─── */
+html.theme-aurum h2,
+html.theme-aurum h3 {
+  background: linear-gradient(135deg, #A855F7 0%, #9333EA 50%, #7E22CE 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+html.dark.theme-aurum h2,
+html.dark.theme-aurum h3 {
+  background: linear-gradient(135deg, #F3E8FF 0%, #D8B4FE 45%, #C084FC 80%, #9333EA 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── 5. 紫金雙色氛圍光暈 ─── */
+html.theme-aurum body::before {
+  content: "";
+  position: fixed;
+  top: -15%;
+  left: 20%;
+  width: 55%;
+  height: 55%;
+  background: radial-gradient(ellipse at center, rgba(168, 85, 247, 0.12) 0%, rgba(126, 34, 206, 0.03) 50%, transparent 70%);
+  filter: blur(110px);
+  pointer-events: none;
+  z-index: 0;
+}
+html.theme-aurum body::after {
+  content: "";
+  position: fixed;
+  bottom: -15%;
+  right: 15%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 215, 0, 0.08) 0%, rgba(245, 185, 61, 0.02) 50%, transparent 70%);
+  filter: blur(110px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── 6. 紫金雙色滾動條 ─── */
 html.theme-aurum .chat-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(245, 185, 61, 0.2);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
+  border-radius: 10px;
 }
 html.theme-aurum .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(245, 185, 61, 0.4);
+  background: linear-gradient(180deg, rgba(255, 215, 0, 0.5) 0%, rgba(168, 85, 247, 0.5) 100%);
 }
 html.theme-aurum .sidebar-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(168, 85, 247, 0.2);
+  background-color: rgba(168, 85, 247, 0.3);
+  border-radius: 10px;
 }
 
-/* ─── 8. 輸入框與遮罩 ─── */
-html.theme-aurum .input-gradient-mask {
-  background: linear-gradient(to top, #050506 75%, transparent 100%);
+/* ─── 7. 輸入區動態遮罩 (Floating Island Input Area Mask) ─── */
+html:not(.dark).theme-aurum .input-gradient-mask {
+  background: linear-gradient(to top, #EEF2F6 82%, transparent 100%);
+}
+html.dark.theme-aurum .input-gradient-mask {
+  background: linear-gradient(to top, #12141D 82%, transparent 100%);
 }
 
-/* ─── 9. Placeholder ─── */
-html.theme-aurum .placeholder\:text-secondary::placeholder {
-  color: #636878 !important;
+/* ─── 8. Placeholder 與選單 ─── */
+html:not(.dark).theme-aurum .placeholder\:text-secondary::placeholder {
+  color: #718096 !important;
+}
+html.dark.theme-aurum .placeholder\:text-secondary::placeholder {
+  color: #787293 !important;
 }
 
-/* ─── 10. 焦點環 ─── */
-html.theme-aurum :focus-visible {
-  outline: 2px solid rgba(245, 185, 61, 0.6);
+/* ─── 9. Focus Ring & Outline Suppression ─── */
+textarea,
+input,
+select {
+  outline: none !important;
+  box-shadow: none !important;
+}
+textarea:focus,
+textarea:focus-visible,
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+
+html.theme-aurum button:focus-visible,
+html.theme-aurum a:focus-visible {
+  outline: 2px solid rgba(168, 85, 247, 0.7);
+  outline-offset: 2px;
+}
+html.dark.theme-aurum button:focus-visible,
+html.dark.theme-aurum a:focus-visible {
+  outline: 2px solid rgba(255, 215, 0, 0.7);
   outline-offset: 2px;
 }
 
-/* ─── 11. 等寬數字 ─── */
-html.theme-aurum .font-mono {
-  font-variant-numeric: tabular-nums lining-nums;
-}
-
-/* ─── 12. 漲跌與狀態色保護 ─── */
+/* ─── 10. 漲跌與狀態色保護 ─── */
 html.theme-aurum .bg-emerald-50 {
-  background-color: rgba(16, 185, 129, 0.1) !important;
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
 }
 html.theme-aurum .bg-red-50 {
-  background-color: rgba(239, 68, 68, 0.1) !important;
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
-/* ─── 13. Dropdown 面板陰影 ─── */
-html.theme-aurum .shadow-dropdown {
+/* ─── 11. Dropdown 懸浮面板與 Floating Island 光暈影線 ─── */
+html:not(.dark).theme-aurum .shadow-dropdown,
+html:not(.dark).theme-aurum .floating-island {
+  background: rgba(238, 242, 246, 0.95) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(126, 34, 206, 0.22) !important;
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 8px 32px -8px rgba(0, 0, 0, 0.8),
-    0 0 40px -12px rgba(168, 85, 247, 0.15) !important;
+    0 18px 45px -10px rgba(163, 177, 198, 0.65),
+    0 0 30px -4px rgba(126, 34, 206, 0.18),
+    0 0 15px -2px rgba(255, 215, 0, 0.12) !important;
+}
+html.dark.theme-aurum .shadow-dropdown,
+html.dark.theme-aurum .floating-island {
+  background: rgba(18, 20, 30, 0.96) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 215, 0, 0.25) !important;
+  box-shadow:
+    0 20px 50px -10px rgba(0, 0, 0, 0.9),
+    0 0 35px -5px rgba(168, 85, 247, 0.28),
+    0 0 20px -3px rgba(255, 215, 0, 0.15) !important;
 }
 
 /* ─── Crypto Marquee Animation ─── */

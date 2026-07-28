@@ -30,10 +30,14 @@ REVIEW_SYSTEM = """\
    - 「確認」「證實」「必定」「將會」→ 改為「暗示」「可能」「在目前證據下」
    - 「顯示 X 因為 Y」→ 若 Y 不是直接數據觀察，改為「可能因為 Y（需 Z 數據確認）」
 3. 若提供的 facet_stances 中有面向與最終方向矛盾，且 text 中未提及該矛盾，
-   在相關 conclusion 的 text 末尾加一句說明。
-4. 回傳格式：JSON array，每個元素含 index（原始位置）和 revised_text。
+   在相關 conclusion 的 text 末尾加一句說明為何不採信該面向。
+4. 配對指標檢查：若判斷中提到 SMA200 但未提到 SMA60（或反之），
+   須在同一判斷中補上另一均線的數值作為對照，避免選擇性呈現。
+   同理適用於利率族群（FEDFUNDS vs DGS10）。
+5. 回傳格式：JSON array，每個元素含 index（原始位置）和 revised_text。
    只回傳需要修改的項目。不需修改的不要列出。
-5. 若所有判斷都夠嚴謹不需修改，回傳空 array: []
+6. 若所有判斷都夠嚴謹不需修改，回傳空 array: []
+7. 不得在 revised_text 中引入原始 text 沒有的數字。只能重新措辭，不能添加新事實。
 """
 
 
@@ -65,13 +69,17 @@ async def review_claims(
         if not revisions:
             return claims  # 不需修改
 
-        # 套用修訂
+        # 套用修訂（含 3.2 輸出約束驗證）
         result = list(claims)
         for revision in revisions:
             idx = revision.get("index")
             new_text = revision.get("revised_text", "").strip()
             if idx is not None and 0 <= idx < len(result) and new_text:
                 original = result[idx]
+                # 3.2 驗證：拒絕引入新數字或改變結構的修訂
+                if not _validate_revision(original, new_text):
+                    logger.warning(f"Review revision #{idx} rejected: introduced new numbers or too different")
+                    continue
                 result[idx] = DraftClaim(
                     text=new_text,
                     evidence_ids=original.evidence_ids,
@@ -149,3 +157,32 @@ def _parse_revisions(response: str) -> list[dict]:
 
 
 __all__ = ["review_claims", "REVIEW_SYSTEM"]
+
+
+import re
+
+
+def _validate_revision(original: DraftClaim, revised_text: str) -> bool:
+    """3.2 輸出約束驗證 — 防止 review LLM 亂改。
+
+    拒絕條件：
+    - revised_text 引入了原始 text 沒有的數字
+    - revised_text 長度跟原始差異超過 50%（改太多了）
+    """
+    # 提取數字
+    original_numbers = set(re.findall(r'\d+\.?\d*', original.text))
+    revised_numbers = set(re.findall(r'\d+\.?\d*', revised_text))
+    new_numbers = revised_numbers - original_numbers
+
+    # 允許小量新數字（如 review 把 "1-4週" 拆成文字）但不允許大量
+    if len(new_numbers) > 2:
+        return False
+
+    # 長度變化不超過 50%
+    original_len = len(original.text)
+    if original_len > 0:
+        ratio = abs(len(revised_text) - original_len) / original_len
+        if ratio > 0.5:
+            return False
+
+    return True

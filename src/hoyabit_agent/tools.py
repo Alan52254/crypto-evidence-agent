@@ -246,10 +246,14 @@ def assess_confidence(
 
     # 1. Agreement (一致性) — 20%
     counts = Counter(directional.values())
+    majority_stance = counts.most_common(1)[0][0]
     raw_agreement = counts.most_common(1)[0][1] / len(directional)
     # 表態面數量折扣：2面一致 ≠ 4面一致。只有2面表態時打五折。
     directional_ratio = len(directional) / len(Facet)
-    agreement = raw_agreement * directional_ratio
+    # 面向矛盾懲罰：若有面跟多數方向不一致，每個矛盾面扣 0.15
+    contradicting = sum(1 for s in directional.values() if s != majority_stance)
+    contradiction_penalty = contradicting * 0.15
+    agreement = max(0.0, raw_agreement * directional_ratio - contradiction_penalty)
 
     # 2. Coverage (覆蓋) — 25%: proportion of 4 facets that have evidence
     coverage = len(present) / len(Facet)

@@ -44,6 +44,28 @@ def client_for(store: InMemoryAnalysisStore) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
+class FailingStore:
+    """模擬 Postgres 連不到 —— 每個方法都拋出 `store.py` 實際會拋的例外類型。
+
+    迴歸測試：`viz/server.py` 曾直接把 `store.recent()`/`store.load()` 的例外
+    讓 ASGI 層接住，變成一頁原始 traceback 的 500。現在必須降級成 503 + 提示。
+    """
+
+    async def recent(self, limit: int = 20) -> tuple[str, ...]:
+        raise ConnectionRefusedError("connection to server at 127.0.0.1, port 5433 failed")
+
+    async def load(self, run_id: str) -> AnalysisOutcome | None:
+        raise ConnectionRefusedError("connection to server at 127.0.0.1, port 5433 failed")
+
+    async def save(self, outcome: AnalysisOutcome) -> None:
+        raise ConnectionRefusedError("connection to server at 127.0.0.1, port 5433 failed")
+
+
+def failing_client() -> httpx.AsyncClient:
+    transport = httpx.ASGITransport(app=create_app(FailingStore()))
+    return httpx.AsyncClient(transport=transport, base_url="http://test")
+
+
 async def test_the_index_lists_saved_runs_newest_first() -> None:
     store = InMemoryAnalysisStore()
     await store.save(an_outcome("run-1"))
@@ -136,3 +158,61 @@ async def test_the_in_memory_store_matches_the_analysis_store_protocol() -> None
     loaded = await store.load("run-1")
     assert loaded is not None
     assert await store.recent() == ("run-1",)
+
+
+# --------------------------------------------------------------------------
+# 迴歸測試：資料庫連不到時降級，不整頁 500
+# --------------------------------------------------------------------------
+
+
+async def test_the_index_degrades_to_503_when_the_database_is_unreachable() -> None:
+    async with failing_client() as client:
+        response = await client.get("/")
+
+    assert response.status_code == 503
+    assert "連不到資料庫" in response.text
+    assert "Traceback" not in response.text  # 不能洩漏原始例外堆疊
+
+
+async def test_a_run_page_degrades_to_503_when_the_database_is_unreachable() -> None:
+    async with failing_client() as client:
+        response = await client.get("/run/run-1")
+
+    assert response.status_code == 503
+    assert "連不到資料庫" in response.text
+
+
+async def test_the_trace_json_endpoint_degrades_to_503() -> None:
+    async with failing_client() as client:
+        response = await client.get("/run/run-1/trace.json")
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "database unavailable"}
+
+
+async def test_the_runs_api_endpoint_degrades_to_503() -> None:
+    async with failing_client() as client:
+        response = await client.get("/api/v1/runs/run-1")
+
+    assert response.status_code == 503
+
+
+async def test_the_evidence_endpoint_degrades_to_503() -> None:
+    async with failing_client() as client:
+        response = await client.get("/api/v1/runs/run-1/evidence")
+
+    assert response.status_code == 503
+
+
+async def test_the_logs_endpoint_degrades_to_503() -> None:
+    async with failing_client() as client:
+        response = await client.get("/api/v1/runs/run-1/logs")
+
+    assert response.status_code == 503
+
+
+async def test_the_manifest_endpoint_degrades_to_503() -> None:
+    async with failing_client() as client:
+        response = await client.get("/api/v1/runs/run-1/manifest")
+
+    assert response.status_code == 503

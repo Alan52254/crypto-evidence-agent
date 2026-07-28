@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.seams import Arguments, ToolSpec
 
 API_URL = "https://api.alternative.me/fng/"
@@ -23,6 +23,8 @@ API_URL = "https://api.alternative.me/fng/"
 
 class FearGreedSource:
     """Crypto Fear & Greed Index — 情緒面補充證據。"""
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client

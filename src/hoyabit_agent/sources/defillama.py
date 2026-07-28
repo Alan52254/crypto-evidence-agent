@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.seams import Arguments, ToolSpec
 
 BASE_URL = "https://api.llama.fi"
@@ -27,6 +27,8 @@ _CHAIN_MAP: dict[Asset, str] = {
 
 class DefiLlamaSource:
     """DefiLlama TVL — 鏈上基本面證據。"""
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client

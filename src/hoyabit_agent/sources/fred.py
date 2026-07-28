@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from hoyabit_agent.domain import Asset, Evidence, Facet, SourceExcerpt
+from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.seams import Arguments, ToolSpec
 
 FRED_API_KEY_ENV = "FRED_API_KEY"
@@ -36,6 +36,8 @@ class FredMacroSource:
     - 單次呼叫取所有 5 個指標的最近值
     - 失效回空集合，不拋例外
     """
+
+    supported_regimes: frozenset[AnalysisRegime] = frozenset({AnalysisRegime.LIVE})
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client

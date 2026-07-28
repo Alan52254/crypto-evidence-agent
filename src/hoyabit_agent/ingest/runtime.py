@@ -41,6 +41,9 @@ async def build_competition_sources(
         OfficialAnnouncementSource,
     )
     from hoyabit_agent.sources.coingecko import CoinGeckoSource
+    from hoyabit_agent.sources.defillama import DefiLlamaSource
+    from hoyabit_agent.sources.fear_greed import FearGreedSource
+    from hoyabit_agent.sources.fred import FredMacroSource
 
     sources: list[EvidenceSource] = [
         BinanceSpotSource(client),
@@ -49,6 +52,9 @@ async def build_competition_sources(
         ExtendedNewsSource(client, labeller=model),
         OfficialAnnouncementSource(client, labeller=model),
         CoinGeckoSource(client),
+        DefiLlamaSource(client),
+        FearGreedSource(client),
+        FredMacroSource(client),
     ]
     # 優先用 pgvector 版本（完整語意檢索）；連不上就用 CSV 直讀版
     historical = await build_market_evidence_source(client)

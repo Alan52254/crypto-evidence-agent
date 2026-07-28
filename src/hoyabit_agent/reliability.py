@@ -40,9 +40,10 @@ _HIGH_PREFIXES = (
     "binance",  # 交易所原始端點（舊格式，保留相容性）
     "bnc-",  # 交易所原始端點（BNC-SPOT-*, BNC-PERP-*）
     "dataset",  # 競賽 OHLCV
-    "hoyabit-",  # 本所自家聚合指標（一手來源）
+    "hoyabit-",  # 本所自家聯合指標（一手來源）
     "official",  # 官方公告來源
     "ethereum-blog",
+    "fred",  # 美國聯邦儲備經濟數據（政府官方）
 )
 
 _MEDIUM_PREFIXES = (
@@ -51,6 +52,8 @@ _MEDIUM_PREFIXES = (
     "blocktempo",
     "blockworks",
     "coingecko",
+    "defillama",
+    "fear-greed",
 )
 
 

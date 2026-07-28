@@ -244,8 +244,8 @@ async def analyse(
         registry[name].spec for name in sorted(registry)
     )
 
-    # 預取低成本來源（CoinGecko、歷史 CSV）—— 不需要模型決定，直接先拿
-    prefetch_names = ("coingecko_market", "market_dataset_context")
+    # 預取低成本來源（CoinGecko、歷史 CSV、DefiLlama、Fear&Greed、FRED）—— 不需要模型決定，直接先拿
+    prefetch_names = ("coingecko_market", "market_dataset_context", "defillama_tvl", "fear_greed_index", "fred_macro")
     prefetch_results = await asyncio.gather(
         *(
             _invoke(

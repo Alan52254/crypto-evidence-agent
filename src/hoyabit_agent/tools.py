@@ -278,7 +278,7 @@ def assess_confidence(
 
     # 5. Completeness (完整性) — 10%: evidence count relative to minimum
     total_evidence = len(items)
-    completeness = min(total_evidence, 8) / 8  # Cap at 8 items for full score
+    completeness = min(total_evidence, 15) / 15  # Cap at 15 items for full score
 
     # Weighted combination
     value = (

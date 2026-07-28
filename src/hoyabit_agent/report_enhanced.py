@@ -205,7 +205,6 @@ def _investor_insights(report: Report) -> str:
     lines.append("")
 
     lines.append("> ⚠️ **免責聲明**：本報告由自動化系統依公開資料生成，僅供資訊參考，不構成投資建議。")
-    lines.append("> HOYA BIT 提供 100% 法幣銀行信託隔離保障。")
 
     return "\n".join(lines)
 
@@ -236,11 +235,17 @@ def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
 
     # 已知限制**動態**產生自本回合實際計算的 report.limitations ——
     # 不再寫死「社群情緒未接入」這類宣稱,否則即時模式下系統已抓到情緒資料時
-    # 報告會自打臉。無動態限制時,只陳述恆為真的分析邊界。
+    # 報告會自打臉。無動態限制時,從 watch claims 提取限制聲明。
     if report.limitations:
         limitation_lines = "\n".join(f"- {line}" for line in report.limitations)
     else:
-        limitation_lines = "- 本回合未偵測到需特別聲明的資料或推理限制"
+        # 從 watch claims 提取限制聲明（它們通常包含「缺乏」「不足」等資訊）
+        from hoyabit_agent.domain import ClaimRole
+        watch_claims = [c for c in report.claims if c.role == ClaimRole.WATCH]
+        if watch_claims:
+            limitation_lines = "\n".join(f"- {c.text[:150]}" for c in watch_claims)
+        else:
+            limitation_lines = "- 本回合未偵測到需特別聲明的資料或推理限制"
 
     return f"""## 📐 方法論
 

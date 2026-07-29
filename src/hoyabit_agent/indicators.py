@@ -144,11 +144,140 @@ def long_short_to_stance(ratio: float) -> float:
     return clamp((ratio - 1.0) / 0.5)
 
 
+# ─── MACD ───────────────────────────────────────────────────────
+
+
+def ema(values: Sequence[float], period: int) -> float | None:
+    """指數移動平均。資料不足時回傳 None。"""
+    if period <= 0 or len(values) < period:
+        return None
+    multiplier = 2.0 / (period + 1)
+    result = sum(values[:period]) / period  # 以 SMA 作為起始值
+    for value in values[period:]:
+        result = (value - result) * multiplier + result
+    return result
+
+
+def macd(
+    closes: Sequence[float],
+    fast: int = 12,
+    slow: int = 26,
+    signal: int = 9,
+) -> tuple[float, float, float] | None:
+    """MACD 指標。回傳 (DIF, DEA, Histogram) 或 None。
+
+    DIF = EMA(fast) - EMA(slow)
+    DEA = EMA(signal) of DIF series
+    Histogram = DIF - DEA
+    """
+    if len(closes) < slow + signal:
+        return None
+
+    # 計算完整的 DIF 序列
+    fast_mult = 2.0 / (fast + 1)
+    slow_mult = 2.0 / (slow + 1)
+
+    fast_ema = sum(closes[:fast]) / fast
+    slow_ema = sum(closes[:slow]) / slow
+
+    dif_series: list[float] = []
+    for i in range(slow, len(closes)):
+        # 更新 fast EMA
+        if i >= fast:
+            fast_ema = (closes[i] - fast_ema) * fast_mult + fast_ema
+        # 更新 slow EMA
+        slow_ema = (closes[i] - slow_ema) * slow_mult + slow_ema
+        dif_series.append(fast_ema - slow_ema)
+
+    if len(dif_series) < signal:
+        return None
+
+    # DEA = EMA of DIF series
+    signal_mult = 2.0 / (signal + 1)
+    dea = sum(dif_series[:signal]) / signal
+    for dif_val in dif_series[signal:]:
+        dea = (dif_val - dea) * signal_mult + dea
+
+    dif = dif_series[-1]
+    histogram = dif - dea
+    return (dif, dea, histogram)
+
+
+# ─── Stochastic KD ──────────────────────────────────────────────
+
+
+def stochastic_kd(
+    highs: Sequence[float],
+    lows: Sequence[float],
+    closes: Sequence[float],
+    k_period: int = 9,
+    d_period: int = 3,
+) -> tuple[float, float] | None:
+    """隨機指標 KD。回傳 (%K, %D) 或 None。
+
+    %K = (Close - Low_N) / (High_N - Low_N) × 100
+    %D = SMA(%K, d_period)
+    """
+    if len(closes) < k_period + d_period - 1:
+        return None
+    if len(highs) != len(closes) or len(lows) != len(closes):
+        return None
+
+    k_values: list[float] = []
+    for i in range(k_period - 1, len(closes)):
+        window_high = max(highs[i - k_period + 1: i + 1])
+        window_low = min(lows[i - k_period + 1: i + 1])
+        if window_high == window_low:
+            k_values.append(50.0)
+        else:
+            k_values.append((closes[i] - window_low) / (window_high - window_low) * 100)
+
+    if len(k_values) < d_period:
+        return None
+
+    k = k_values[-1]
+    d = sum(k_values[-d_period:]) / d_period
+    return (k, d)
+
+
+# ─── Bollinger Bands ────────────────────────────────────────────
+
+
+def bollinger_bands(
+    closes: Sequence[float],
+    period: int = 20,
+    num_std: float = 2.0,
+) -> tuple[float, float, float, float] | None:
+    """布林通道。回傳 (upper, middle, lower, bandwidth%) 或 None。
+
+    middle = SMA(period)
+    upper = middle + num_std × StdDev
+    lower = middle - num_std × StdDev
+    bandwidth = (upper - lower) / middle × 100
+    """
+    if period <= 0 or len(closes) < period:
+        return None
+
+    window = closes[-period:]
+    middle = sum(window) / period
+    variance = sum((x - middle) ** 2 for x in window) / period
+    std_dev = variance ** 0.5
+
+    upper = middle + num_std * std_dev
+    lower = middle - num_std * std_dev
+    bandwidth = (upper - lower) / middle * 100 if middle > 0 else 0.0
+
+    return (upper, middle, lower, bandwidth)
+
+
 __all__ = [
     "Kline",
+    "bollinger_bands",
     "clamp",
+    "ema",
     "funding_to_stance",
     "long_short_to_stance",
+    "macd",
     "open_interest_change",
     "order_book_imbalance",
     "relative_spread",
@@ -156,5 +285,6 @@ __all__ = [
     "rsi",
     "rsi_to_stance",
     "sma",
+    "stochastic_kd",
     "volume_change",
 ]

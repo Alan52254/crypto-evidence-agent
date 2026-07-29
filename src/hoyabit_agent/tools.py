@@ -275,6 +275,18 @@ def assess_confidence(
     # 2. Coverage (覆蓋) — 25%: proportion of 4 facets that have evidence
     coverage = len(present) / len(Facet)
 
+    # 可回答性懲罰：如果技術面只有過期 dataset 資料（沒有即時 Binance spot），
+    # coverage 打折 —— 代表「有證據但品質不足以回答即時問題」
+    tech_sources = [
+        excerpt.source_id
+        for item in items if item.facet is Facet.TECHNICAL
+        for excerpt in item.excerpts
+    ]
+    has_live_technical = any(s.startswith("BNC-SPOT") for s in tech_sources)
+    has_only_dataset = all(s.startswith("dataset") for s in tech_sources) if tech_sources else False
+    if has_only_dataset and not has_live_technical and Facet.TECHNICAL in present:
+        coverage *= 0.6  # 過期技術面只算 60% 的覆蓋
+
     # 3. Independence (來源品質) — 25%
     # 以可信度加權、且**同事件合併**的來源數。直接數 distinct source_id 會讓
     # 「多找一家轉載」無成本地抬高信心度 —— 那正是 ADR 0002 要堵的漏洞。

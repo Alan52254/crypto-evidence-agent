@@ -98,6 +98,19 @@ def assess(
     missing = frozenset(
         facet for facet in requirement.required_facets if facet_counts[facet] < 1
     )
+
+    # 題型導向的品質門檻：如果 sentiment 面只有 Fear & Greed Index（沒有任何新聞），
+    # 視為品質不足，把 sentiment 重新加入 missing —— 促使系統去抓新聞
+    if Facet.SENTIMENT not in missing and facet_counts[Facet.SENTIMENT] > 0:
+        sentiment_evidence = [item for item in evidence if item.facet is Facet.SENTIMENT]
+        has_only_fgi = all(
+            all(e.source_id.startswith("fear-greed") for e in item.excerpts)
+            for item in sentiment_evidence
+        )
+        # 如果 sentiment 面只有恐慌貪婪指數，沒有任何新聞類 evidence
+        if has_only_fgi:
+            missing = missing | frozenset({Facet.SENTIMENT})
+
     if missing:
         names = "、".join(sorted(f.value for f in missing))
         gaps.append(Gap(MISSING_FACETS, "high", f"尚未取得 {names} 面的證據"))

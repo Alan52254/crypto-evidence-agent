@@ -19,6 +19,7 @@ from hoyabit_agent.arguments import bounded_int, choice
 from hoyabit_agent.domain import AnalysisRegime, Asset, Evidence, Facet, SourceExcerpt
 from hoyabit_agent.indicators import (
     Kline,
+    clamp,
     funding_to_stance,
     long_short_to_stance,
     open_interest_change,
@@ -247,6 +248,84 @@ class BinanceSpotSource(_BinanceSource):
                             f"{url}?symbol={symbol}&interval={interval}&limit={limit}",
                             "近 5 期與前 5 期成交量",
                             f"均量變化 {change:+.2%}",
+                        ),
+                    ),
+                )
+            )
+
+        # ─── MACD (12/26/9) ───
+        from hoyabit_agent.indicators import macd as calc_macd
+        macd_result = calc_macd(closes)
+        if macd_result is not None:
+            dif, dea, histogram = macd_result
+            macd_stance = clamp(histogram / (abs(latest) * 0.001)) if latest > 0 else 0.0
+            found.append(
+                Evidence(
+                    id=f"{prefix}-MACD",
+                    facet=Facet.TECHNICAL,
+                    summary=f"{symbol} MACD: DIF={dif:.2f}, DEA={dea:.2f}, 柱狀={histogram:.2f}",
+                    stance_hint=macd_stance,
+                    excerpts=(
+                        _excerpt(
+                            f"{prefix}-MACD",
+                            f"{url}?symbol={symbol}&interval={interval}&limit={limit}",
+                            "MACD(12,26,9)",
+                            f"DIF={dif:.4f}, DEA={dea:.4f}, Histogram={histogram:.4f}",
+                        ),
+                    ),
+                )
+            )
+
+        # ─── Stochastic KD (9/3/3) ───
+        from hoyabit_agent.indicators import stochastic_kd
+        highs = [k.high for k in klines]
+        lows = [k.low for k in klines]
+        kd_result = stochastic_kd(highs, lows, closes)
+        if kd_result is not None:
+            k_val, d_val = kd_result
+            kd_stance = clamp((k_val - 50.0) / 50.0)
+            found.append(
+                Evidence(
+                    id=f"{prefix}-KD",
+                    facet=Facet.TECHNICAL,
+                    summary=f"{symbol} KD 指標: K={k_val:.1f}, D={d_val:.1f}",
+                    stance_hint=kd_stance,
+                    excerpts=(
+                        _excerpt(
+                            f"{prefix}-KD",
+                            f"{url}?symbol={symbol}&interval={interval}&limit={limit}",
+                            "Stochastic KD(9,3,3)",
+                            f"K={k_val:.2f}, D={d_val:.2f}",
+                        ),
+                    ),
+                )
+            )
+
+        # ─── Bollinger Bands (20/2σ) ───
+        from hoyabit_agent.indicators import bollinger_bands
+        bb_result = bollinger_bands(closes)
+        if bb_result is not None:
+            upper, middle, lower, bandwidth = bb_result
+            if upper != lower:
+                pct_b = (latest - lower) / (upper - lower)
+                bb_stance = clamp((pct_b - 0.5) * 2)
+            else:
+                bb_stance = 0.0
+            found.append(
+                Evidence(
+                    id=f"{prefix}-BB",
+                    facet=Facet.TECHNICAL,
+                    summary=(
+                        f"{symbol} 布林通道: 上軌={upper:.2f}, 中軌={middle:.2f}, "
+                        f"下軌={lower:.2f}, 帶寬={bandwidth:.1f}%"
+                    ),
+                    stance_hint=bb_stance,
+                    excerpts=(
+                        _excerpt(
+                            f"{prefix}-BB",
+                            f"{url}?symbol={symbol}&interval={interval}&limit={limit}",
+                            "Bollinger Bands(20,2)",
+                            f"Upper={upper:.2f}, Middle={middle:.2f}, Lower={lower:.2f}, BW={bandwidth:.1f}%",
                         ),
                     ),
                 )

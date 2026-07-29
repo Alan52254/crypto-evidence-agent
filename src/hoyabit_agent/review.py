@@ -193,6 +193,7 @@ def _validate_revision(original: DraftClaim, revised_text: str) -> bool:
 PAIRED_EVIDENCE_GROUPS: dict[str, tuple[str, ...]] = {
     "moving_averages": ("SMA60", "SMA200"),
     "rates": ("FEDFUNDS", "DGS10"),
+    "momentum": ("RSI14", "MACD", "KD"),
 }
 
 

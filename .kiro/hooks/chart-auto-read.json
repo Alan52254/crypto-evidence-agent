@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "Auto Chart Analysis",
+    "trigger": "PostFileCreate",
+    "matcher": "input_charts/.*\\.(png|jpg|jpeg|webp)$",
+    "action": {
+      "type": "agent",
+      "prompt": "偵測到新圖表上傳至 input_charts/，請使用 chart_reader 工具分析此圖表並更新當前分析上下文。"
+    }
+  }]
+}

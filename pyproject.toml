@@ -21,6 +21,10 @@ dev = [
     "mypy>=1.13",
     "ruff>=0.8",
 ]
+vision = [
+    "playwright>=1.48",
+    "Pillow>=10.0",
+]
 
 [project.scripts]
 hoyabit-mcp = "hoyabit_agent.mcp_server:main"

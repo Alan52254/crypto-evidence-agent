@@ -7,9 +7,12 @@ import httpx
 from hoyabit_agent.ingest.embeddings import GeminiEmbedder
 from hoyabit_agent.ingest.historical import MarketDatasetEvidenceSource
 from hoyabit_agent.ingest.postgres_store import PostgresMarketDocumentStore
+from hoyabit_agent.models.vision import VisionModelAdapter
 from hoyabit_agent.seams import EvidenceSource, ModelProvider
 from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
+from hoyabit_agent.sources.chart_reader import ChartReaderSource
 from hoyabit_agent.sources.news import NewsRssSource
+from hoyabit_agent.sources.web_chart_capture import WebChartCaptureSource
 from hoyabit_agent.storage.postgres import reachable
 
 
@@ -50,6 +53,13 @@ async def build_competition_sources(
     historical = await build_market_evidence_source(client)
     if historical is not None:
         sources.append(historical)
+
+    # Vision 工具（需要 VisionModelAdapter；無 API key 時不註冊）
+    vision_adapter = VisionModelAdapter.from_environment(client)
+    if vision_adapter is not None:
+        sources.append(ChartReaderSource(client, vision_adapter))
+        sources.append(WebChartCaptureSource(client, vision_adapter))
+
     return sources
 
 

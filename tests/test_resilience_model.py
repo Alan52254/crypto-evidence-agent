@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-from typing import Sequence
+from collections.abc import Sequence
+
 import pytest
 
 from hoyabit_agent.domain import Asset, ClaimRole, DraftClaim, Evidence, Facet, LabelAspect
@@ -99,47 +99,66 @@ def dummy_context() -> GatherContext:
 
 @pytest.mark.asyncio
 async def test_primary_provider_succeeds_directly() -> None:
-    primary = SucceedingProvider("gemini")
-    secondary = SucceedingProvider("groq")
-    adapter = ResilientModelAdapter(primary, secondary)
+    adapter = ResilientModelAdapter(
+        SucceedingProvider("gemini"), SucceedingProvider("groq"), retry_delay=0.0
+    )
 
     decision = await adapter.plan(dummy_context(), ())
     assert decision.invocations[0].tool == "binance_spot"
     assert "gemini" in decision.reason
 
 
+def adapter_for(
+    primary: ModelProvider, secondary: ModelProvider | None = None
+) -> ResilientModelAdapter:
+    """建構受測適配器，退避延遲壓到趨近零。
+
+    production 的退避是 60 秒 × 2 次（Gemini 免費層 429 的解除時間），
+    測試若沿用預設值，單一測試就會真的睡上五分鐘 —— 退避時長不是這些
+    測試要驗證的行為，failover 的**決策**才是。
+    """
+    return ResilientModelAdapter(primary, secondary, retry_delay=0.0)
+
+
 @pytest.mark.asyncio
 async def test_primary_fails_with_429_switches_to_secondary() -> None:
-    primary = FailingProvider("Gemini 429 Too Many Requests")
-    secondary = SucceedingProvider("groq")
-    adapter = ResilientModelAdapter(primary, secondary)
+    decision = await adapter_for(
+        FailingProvider("Gemini 429 Too Many Requests"), SucceedingProvider("groq")
+    ).plan(dummy_context(), ())
 
-    decision = await adapter.plan(dummy_context(), ())
     assert len(decision.invocations) == 1
     assert decision.invocations[0].tool == "binance_spot"
     assert "groq" in decision.reason
 
 
 @pytest.mark.asyncio
-async def test_primary_throws_exception_switches_to_secondary() -> None:
-    primary = ExceptionThrowingProvider()
-    secondary = SucceedingProvider("groq")
-    adapter = ResilientModelAdapter(primary, secondary)
+async def test_a_throwing_primary_still_yields_a_plan_from_the_secondary() -> None:
+    decision = await adapter_for(
+        ExceptionThrowingProvider(), SucceedingProvider("groq")
+    ).plan(dummy_context(), ())
 
-    decision = await adapter.plan(dummy_context(), ())
     assert len(decision.invocations) == 1
     assert "groq" in decision.reason
 
-    claims = await adapter.synthesise(Asset.BTC, ())
-    assert len(claims) == 1
-    assert claims[0].text == "看多趨勢"
+
+@pytest.mark.asyncio
+async def test_synthesise_does_not_fail_over_to_the_secondary() -> None:
+    """撰寫判斷刻意不 failover —— 見 `ResilientModelAdapter.synthesise`。
+
+    備援模型的中文金融推理與結構化輸出品質不足以產出可用判斷，
+    拿它的結果填報告比回空更糟：回空時 `run.py` 會走事實層降級並
+    在報告裡說明「沒有結論」的原因，那是誠實的輸出。
+    """
+    claims = await adapter_for(
+        ExceptionThrowingProvider(), SucceedingProvider("groq")
+    ).synthesise(Asset.BTC, ())
+
+    assert claims == ()
 
 
 @pytest.mark.asyncio
 async def test_both_providers_fail_degrades_gracefully() -> None:
-    primary = FailingProvider("Gemini 429")
-    secondary = FailingProvider("Groq 429")
-    adapter = ResilientModelAdapter(primary, secondary)
+    adapter = adapter_for(FailingProvider("Gemini 429"), FailingProvider("Groq 429"))
 
     decision = await adapter.plan(dummy_context(), ())
     assert decision.invocations == ()

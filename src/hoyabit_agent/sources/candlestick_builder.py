@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
 
 import httpx
 
@@ -18,7 +17,6 @@ from hoyabit_agent.charts import (
     generate_candlestick_svg,
     generate_price_chart_svg,
     generate_rsi_chart_svg,
-    generate_volume_chart_svg,
     svg_to_data_uri,
 )
 from hoyabit_agent.domain import (
@@ -26,10 +24,12 @@ from hoyabit_agent.domain import (
     Asset,
     Evidence,
     Facet,
+    Figure,
+    FigureKind,
     SourceExcerpt,
 )
 from hoyabit_agent.indicators import rsi, sma
-from hoyabit_agent.seams import Arguments, EvidenceSource, ToolSpec
+from hoyabit_agent.seams import Arguments, ToolSpec
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,12 @@ class CandlestickBuilderSource:
 
     def __init__(self, http_client: httpx.AsyncClient) -> None:
         self._client = http_client
-        self.supported_regimes: frozenset[AnalysisRegime] = frozenset(AnalysisRegime)
+        # 只在即時模式合規：本工具畫的是**現在**的 Binance K 線。
+        # 在回測模式下它會取到截止日之後的價格，那是偷看未來（ADR 0005）。
+        # `binance.py` 已經是 LIVE only，這裡宣告全模式是不一致的漏洞。
+        self.supported_regimes: frozenset[AnalysisRegime] = frozenset(
+            {AnalysisRegime.LIVE}
+        )
 
     @property
     def spec(self) -> ToolSpec:
@@ -97,15 +102,24 @@ class CandlestickBuilderSource:
             # [open_time, open, high, low, close, volume, ...]
             ts_sec = int(k[0]) // 1000
             date_str = datetime.fromtimestamp(ts_sec, tz=UTC).strftime("%m-%d %H:%M")
-            o, h, l, c, v = (
+            open_, high, low, close, volume = (
                 float(k[1]),
                 float(k[2]),
                 float(k[3]),
                 float(k[4]),
                 float(k[5]),
             )
-            candles.append(OHLCV(date=date_str, open=o, high=h, low=l, close=c, volume=v))
-            closes.append(c)
+            candles.append(
+                OHLCV(
+                    date=date_str,
+                    open=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    volume=volume,
+                )
+            )
+            closes.append(close)
 
         if len(closes) < 5:
             return ()
@@ -137,9 +151,6 @@ class CandlestickBuilderSource:
         candle_svg = generate_candlestick_svg(chart_data)
         rsi_svg = generate_rsi_chart_svg(chart_data)
 
-        price_uri = svg_to_data_uri(price_svg)
-        candle_uri = svg_to_data_uri(candle_svg)
-
         first_close = closes[0]
         last_close = closes[-1]
         change_pct = ((last_close - first_close) / first_close) * 100
@@ -153,6 +164,32 @@ class CandlestickBuilderSource:
 
         evidence_id = f"candlestick-{target_asset.lower()}-{interval}"
 
+        # 圖走 `figures`，不進 `excerpt.text`。
+        # 來源片段的語意是「可引用的原文」——把數 KB 的 base64 塞進去會
+        # 讓它被送進 synthesise 提示詞，排擠掉真正的證據，而且 base64
+        # 本身不是任何人能引用或核對的東西。
+        window = f"{candles[0].date} ~ {candles[-1].date}"
+        figures = (
+            Figure(
+                kind=FigureKind.GENERATED,
+                caption=f"{target_asset} {interval} K 線（{len(candles)} 根，{window}）",
+                data_uri=svg_to_data_uri(candle_svg),
+                alt=f"{target_asset} {interval} candlestick chart",
+            ),
+            Figure(
+                kind=FigureKind.GENERATED,
+                caption=f"{target_asset} {interval} 收盤走勢與 SMA20/SMA50（{window}）",
+                data_uri=svg_to_data_uri(price_svg),
+                alt=f"{target_asset} {interval} price trend with moving averages",
+            ),
+            Figure(
+                kind=FigureKind.GENERATED,
+                caption=f"{target_asset} {interval} RSI(14)，最新 {rsi_vals[-1]:.1f}",
+                data_uri=svg_to_data_uri(rsi_svg),
+                alt=f"{target_asset} {interval} RSI indicator",
+            ),
+        )
+
         evidence_item = Evidence(
             id=evidence_id,
             facet=Facet.TECHNICAL,
@@ -163,13 +200,15 @@ class CandlestickBuilderSource:
                     source_id=f"candlestick-builder-{target_asset.lower()}",
                     url=url,
                     retrieved_at=datetime.now(UTC),
-                    locator=f"klines/{interval}",
+                    locator=f"klines/{interval} [{window}]",
                     text=(
-                        f"{summary} | [K線圖 Base64]({candle_uri}) | "
-                        f"[走勢圖 Base64]({price_uri})"
+                        f"{summary}；區間最高 ${max(c.high for c in candles):,.2f}、"
+                        f"最低 ${min(c.low for c in candles):,.2f}；"
+                        f"圖表由本系統自 Binance 原始 K 線繪製（{len(figures)} 張）"
                     ),
                 ),
             ),
+            figures=figures,
         )
 
         return (evidence_item,)

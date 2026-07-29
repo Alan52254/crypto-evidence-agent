@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -17,9 +18,11 @@ from hoyabit_agent.domain import (
     Asset,
     Evidence,
     Facet,
+    Figure,
+    FigureKind,
     SourceExcerpt,
 )
-from hoyabit_agent.seams import Arguments, EvidenceSource, ToolSpec
+from hoyabit_agent.seams import Arguments, ToolSpec
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +33,11 @@ class ChartOCRSource:
     def __init__(self, http_client: httpx.AsyncClient, model_provider: Any = None) -> None:
         self._client = http_client
         self._model_provider = model_provider
-        self.supported_regimes: frozenset[AnalysisRegime] = frozenset(AnalysisRegime)
+        # 只在即時模式合規：抓的是當下的外部圖片，內容反映的是現在的市場，
+        # 在回測模式下等於引入截止日之後的資訊（ADR 0005）。
+        self.supported_regimes: frozenset[AnalysisRegime] = frozenset(
+            {AnalysisRegime.LIVE}
+        )
 
     @property
     def spec(self) -> ToolSpec:
@@ -103,7 +110,19 @@ class ChartOCRSource:
         }
         facet = facet_map.get(facet_name, Facet.TECHNICAL)
 
-        evidence_id = f"ocr-chart-{target_asset.lower()}-{abs(hash(image_url)) % 10000:04d}"
+        # `hash()` 在 Python 中對 str 帶 per-process 隨機種子，
+        # 用它組識別碼會讓同一張圖在不同回合拿到不同 ID，破壞可重現性。
+        digest = hashlib.sha256(image_url.encode("utf-8")).hexdigest()[:8]
+        evidence_id = f"ocr-chart-{target_asset.lower()}-{digest}"
+
+        # 原圖以 EXTERNAL Figure 帶進報告 —— 讀者要能看到 Agent 讀的是哪張圖，
+        # 而不是只讀到 Agent 對那張圖的轉述。這是圖表證據的溯源條件。
+        figure = Figure(
+            kind=FigureKind.EXTERNAL,
+            caption=f"外部圖表（{target_asset}）：{summary}",
+            source_url=image_url,
+            alt=f"{target_asset} chart extracted from external source",
+        )
 
         evidence_item = Evidence(
             id=evidence_id,
@@ -115,10 +134,11 @@ class ChartOCRSource:
                     source_id=f"ocr-chart-{target_asset.lower()}",
                     url=image_url,
                     retrieved_at=datetime.now(UTC),
-                    locator=f"image_ocr:{image_url[-20:]}",
+                    locator=f"image_ocr:{digest}",
                     text=f"圖表視覺抽取: {summary} (相關脈絡: {context or '無'})",
                 ),
             ),
+            figures=(figure,),
         )
 
         return (evidence_item,)
@@ -133,18 +153,27 @@ class ChartOCRSource:
         """運用 Gemini Vision 分析圖片並抽取結構化資訊。"""
         if self._model_provider and hasattr(self._model_provider, "analyze_image"):
             try:
-                return await self._model_provider.analyze_image(
+                result = await self._model_provider.analyze_image(
                     image_bytes, mime_type, asset, context
                 )
+                # 供應者是鴨子型別（能力偵測而非介面），回傳型別無法靜態保證。
+                # 不是 dict 就當作沒有結果，而不是把未知結構往下傳。
+                return result if isinstance(result, dict) else None
             except Exception as exc:
                 logger.warning("[ChartOCR] 多模態分析失敗: %s", exc)
 
-        # 啟動啟發式視覺萃取降級
-        return {
-            "summary": f"{asset} 圖表數據抽取: 包含價格走勢與關鍵技術位（來源: 圖片視覺 OCR）",
-            "stance_hint": 0.1,
-            "facet": "technical",
-        }
+        # 沒有視覺能力時**回傳 None，不編造摘要**。
+        #
+        # 原本這裡有一段寫死的降級文案（「包含價格走勢與關鍵技術位」）
+        # 外加 stance_hint=0.1。那不是降級，那是捏造證據：文案與圖片內容
+        # 無關，卻會以一項技術面證據的身分進入信心度計算與報告。
+        #
+        # 資料源失效必須以空集合表達（見 seams.EvidenceSource 的不變式），
+        # 「我看不懂這張圖」的正確表達是沒有證據，不是一句看似有內容的話。
+        logger.info(
+            "[ChartOCR] 模型不具備 analyze_image 能力，本次不產出證據（不編造圖表摘要）"
+        )
+        return None
 
 
 __all__ = ["ChartOCRSource"]

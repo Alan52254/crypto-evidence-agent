@@ -11,7 +11,7 @@ import asyncio
 import json
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
 
 from hoyabit_agent import gaps as gap_rules
@@ -245,8 +245,19 @@ async def analyse(
         registry[name].spec for name in sorted(registry)
     )
 
-    # 預取低成本來源（CoinGecko、歷史 CSV、DefiLlama、Fear&Greed、FRED）—— 不需要模型決定，直接先拿
-    prefetch_names = ("coingecko_market", "market_dataset_context", "defillama_tvl", "fear_greed_index", "fred_macro")
+    # 預取低成本來源 —— 不需要模型決定，直接先拿。
+    #
+    # `candlestick_chart_builder` 也在此：技術面圖表不該取決於模型「有沒有想到
+    # 要畫圖」。它是報告的固定組成，缺了它讀者只能讀數字讀不到走勢。
+    # 回測模式下它不在 registry 內（LIVE only），因此會自動被跳過。
+    prefetch_names = (
+        "coingecko_market",
+        "market_dataset_context",
+        "defillama_tvl",
+        "fear_greed_index",
+        "fred_macro",
+        "candlestick_chart_builder",
+    )
     prefetch_results = await asyncio.gather(
         *(
             _invoke(
@@ -439,48 +450,25 @@ async def analyse(
     # ─── 組裝階段 ───
     drafts = await model.synthesise(asset, gathered, request.question)
 
-    # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構
+    # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構。
+    #
+    # 只在供應者能做「純文字生成」時啟用。`synthesise` 不適合當審查通道：
+    # 它回傳的是 DraftClaim 陣列而非文字，硬用它做審查只會拿到空結果
+    # （這裡原本有一個永遠回傳 None 的 `_review_call`，等於審查從未生效）。
     if drafts:
-        from hoyabit_agent.review import review_claims, enforce_paired_disclosure
-        stances = facet_stances(gathered)
+        from hoyabit_agent.review import enforce_paired_disclosure, review_claims
 
-        async def _review_call(system: str, user: str) -> str | None:
-            """用現有 model 做一次輕量文字生成。"""
+        review_call = _text_generation_channel(model)
+        if review_call is not None:
             try:
-                result = await model.synthesise(
-                    asset, (), f"[SYSTEM]{system}\n\n[USER]{user}"
+                drafts = await review_claims(
+                    drafts, gathered, facet_stances(gathered), review_call
                 )
-                # synthesise 回傳 DraftClaim tuple，我們需要文字
-                # 改用 plan 的回傳格式取得純文字回應
-                return None  # fallback: 如果沒有專門的 review 方法
-            except Exception:
-                return None
+            except Exception:  # noqa: BLE001 — 審查是修飾，失敗不該中斷分析
+                pass
 
-        # 用 Gemini 的 _post 做一次輕量 call（透過 plan 的低層）
-        try:
-            from hoyabit_agent.models.gemini import GeminiProvider
-            if isinstance(model, GeminiProvider) or (hasattr(model, '_primary') and isinstance(getattr(model, '_primary', None), GeminiProvider)):
-                provider = model._primary if hasattr(model, '_primary') else model
-
-                async def _gemini_review_call(system: str, user: str) -> str | None:
-                    payload = {
-                        "systemInstruction": {"parts": [{"text": system}]},
-                        "contents": [{"role": "user", "parts": [{"text": user}]}],
-                    }
-                    body = await provider._post(payload, model=provider._model)
-                    if body is None:
-                        return None
-                    parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                    return parts[0].get("text") if parts else None
-
-                drafts = await review_claims(drafts, gathered, stances, _gemini_review_call)
-        except Exception:
-            pass  # review 失敗不阻塞，用原始判斷
-
-    # Layer 1.1：規則式配對揭露（deterministic，不依賴 LLM）
-    # 即使 review LLM 漏掉配對規則，程式碼也會強制補上
-    if drafts:
-        from hoyabit_agent.review import enforce_paired_disclosure
+        # 規則式配對揭露（確定性，不依賴 LLM）——
+        # 即使審查層未生效或漏掉配對規則，這一步也會補上。
         drafts = enforce_paired_disclosure(drafts, gathered)
 
     report = _assemble(
@@ -500,6 +488,39 @@ async def analyse(
         trace=recorder.build(identifier),
         rejection=None,
     )
+
+
+def _text_generation_channel(
+    model: ModelProvider,
+) -> Callable[[str, str], Awaitable[str | None]] | None:
+    """取出一個「給系統指令與使用者訊息、拿回純文字」的通道，供審查層使用。
+
+    `ModelProvider` 介面刻意不含這個能力：三個接縫方法（plan / synthesise /
+    label）都是結構化輸出，而審查需要的是自由文字。因此這裡以能力偵測取得，
+    偵測不到就回 None，審查層跳過 —— 審查是修飾，不是正確性的必要條件。
+    """
+    provider = getattr(model, "_primary", model)
+    post = getattr(provider, "_post", None)
+    model_name = getattr(provider, "_model", None)
+    if post is None or model_name is None:
+        return None
+
+    async def call(system: str, user: str) -> str | None:
+        body = await post(
+            {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": user}]}],
+            },
+            model=model_name,
+        )
+        if body is None:
+            return None
+        candidates = body.get("candidates") or [{}]
+        parts = candidates[0].get("content", {}).get("parts") or []
+        text = parts[0].get("text") if parts else None
+        return text if isinstance(text, str) else None
+
+    return call
 
 
 def _fallback_plan(tools: tuple[ToolSpec, ...], asset: Asset) -> tuple[ToolInvocation, ...]:

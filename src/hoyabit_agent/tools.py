@@ -19,6 +19,7 @@ from hoyabit_agent.domain import (
     DraftClaim,
     Evidence,
     Facet,
+    Figure,
     Insufficiency,
     InsufficientEvidence,
     Stance,
@@ -70,6 +71,8 @@ def merge_independent_evidence(evidence: Iterable[Evidence]) -> tuple[Evidence, 
             stance_hint=(existing.stance_hint + item.stance_hint) / 2,
             excerpts=existing.excerpts + item.excerpts,
             event_key=existing.event_key,
+            # 圖與來源片段同理：歸併不損失溯源，兩邊的圖都保留。
+            figures=_distinct_figures(existing.figures, item.figures),
         )
         merged[key] = combined
         ordered[ordered.index(existing)] = combined
@@ -92,9 +95,23 @@ def merge_independent_evidence(evidence: Iterable[Evidence]) -> tuple[Evidence, 
             stance_hint=item.stance_hint,
             excerpts=excerpts,
             event_key=item.event_key or existing.event_key,
+            figures=_distinct_figures(existing.figures, item.figures),
         )
 
     return tuple(by_id[evidence_id] for evidence_id in positions)
+
+
+def _distinct_figures(*groups: tuple[Figure, ...]) -> tuple[Figure, ...]:
+    """合併圖表並去重，保留先出現的順序。
+
+    以呈現來源（`renderable_src`）判斷同一張圖：同一張 K 線圖被重複觀察
+    兩次不該在報告裡出現兩次。
+    """
+    seen: dict[str, Figure] = {}
+    for group in groups:
+        for figure in group:
+            seen.setdefault(figure.renderable_src, figure)
+    return tuple(seen.values())
 
 
 @dataclass(frozen=True)

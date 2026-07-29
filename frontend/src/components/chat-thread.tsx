@@ -411,6 +411,82 @@ function CopyButton({ text, className = "" }: { text: string; className?: string
   );
 }
 
+/**
+ * 圖表區 —— 圖來自證據自己攜帶的 figures，因此每張圖都標得出它的證據識別碼。
+ *
+ * 自繪圖與外部引用圖分開標示：前者可由原始數值重算，後者的製圖正確性
+ * 由原始來源負責。讀者要分得出「這張圖的數字能不能核對」。
+ */
+function FigureGallery({ report }: { report: AnalysisReport }) {
+  const figures = report.evidence.flatMap((evidence) =>
+    (evidence.figures ?? []).map((figure) => ({
+      ...figure,
+      evidenceId: evidence.evidence_id,
+    })),
+  );
+
+  if (figures.length === 0) return null;
+
+  return (
+    <div className="space-y-3 border-t border-outline-variant pt-4">
+      <h3 className="flex items-center gap-2 text-label-caps font-semibold uppercase text-secondary">
+        <TrendingUp className="h-3.5 w-3.5" />
+        技術圖表 ({figures.length})
+      </h3>
+      <div className="space-y-4">
+        {figures.map((figure) => (
+          <figure
+            key={`${figure.evidenceId}-${figure.caption}`}
+            className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={figure.src}
+              alt={figure.alt || figure.caption}
+              className="w-full"
+              loading="lazy"
+            />
+            <figcaption className="flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant bg-surface-container-low px-3 py-2">
+              <span className="text-[11px] text-on-surface-variant">
+                {figure.caption}
+              </span>
+              <span className="flex items-center gap-2">
+                <span
+                  className={`rounded-pill px-2 py-0.5 text-[9px] font-bold uppercase ${
+                    figure.kind === "generated"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-800"
+                  }`}
+                  title={
+                    figure.kind === "generated"
+                      ? "本系統自原始數值繪製，可重算"
+                      : "引用外部既有圖表，製圖正確性由原始來源負責"
+                  }
+                >
+                  {figure.kind === "generated" ? "本系統繪製" : "外部引用"}
+                </span>
+                <span className="font-mono text-[9px] text-secondary">
+                  {figure.evidenceId}
+                </span>
+                {figure.source_url && (
+                  <a
+                    href={figure.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[9px] text-primary underline hover:text-primary/70"
+                  >
+                    原圖
+                  </a>
+                )}
+              </span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReportResponse({
   report,
   onEvidenceClick,
@@ -508,6 +584,9 @@ function ReportResponse({
       <p className="text-body-md font-bold text-primary leading-relaxed">
         {report.question}
       </p>
+
+      {/* Charts — 直接呈現，不藏在折疊區裡。走勢是技術面問題的答案本體 */}
+      <FigureGallery report={report} />
 
       {/* Claims */}
       {report.claims.length > 0 && (

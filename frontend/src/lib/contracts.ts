@@ -46,6 +46,16 @@ export interface EvidenceSource {
   content_reference: { locator: string; excerpt: string };
 }
 
+/** 證據的視覺形式。generated = 本系統自原始數值繪製；external = 引用外部既有圖表。 */
+export interface EvidenceFigure {
+  kind: "generated" | "external";
+  caption: string;
+  /** 可直接放進 img src：自繪圖為 data URI，外部圖為原始 URL。 */
+  src: string;
+  source_url: string | null;
+  alt: string;
+}
+
 export interface EvidenceRecord {
   evidence_id: string;
   facet: Facet;
@@ -53,6 +63,7 @@ export interface EvidenceRecord {
   stance_hint: number;
   related_claim: string[];
   sources: EvidenceSource[];
+  figures?: EvidenceFigure[];
 }
 
 export interface ReportClaim {

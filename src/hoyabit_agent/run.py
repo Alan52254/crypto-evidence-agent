@@ -259,14 +259,39 @@ async def analyse(
         "fred_macro",
         "candlestick_chart_builder",
     )
+
+    # ─── 預取所有涉及的幣種 ───
+    # 比較題（BTC vs ETH）或單幣題都走同一條路：對每個 involved asset 都跑 prefetch。
+    # 單幣題 involved = (BTC,)，比較題 involved = (BTC, ETH)。
+    # 這確保第二個幣種不需要靠模型「記得呼叫工具」才能拿到資料。
+    # 共用來源（fred_macro, fear_greed_index）只取一次（它們不分幣種）。
+    _per_asset_sources = (
+        "binance_spot",
+        "coingecko_market",
+        "market_dataset_context",
+        "defillama_tvl",
+        "candlestick_chart_builder",
+    )
+    _global_sources = (
+        "fear_greed_index",
+        "fred_macro",
+    )
+    _prefetch_invocations: list[tuple[str, Asset]] = []
+    for _asset in involved:
+        for name in _per_asset_sources:
+            if name in registry:
+                _prefetch_invocations.append((name, _asset))
+    for name in _global_sources:
+        if name in registry:
+            _prefetch_invocations.append((name, asset))  # 全域來源只用 primary asset
+
     prefetch_results = await asyncio.gather(
         *(
             _invoke(
-                ToolInvocation(name, {"asset": asset.value}),
-                registry, asset, io_timeout_seconds,
+                ToolInvocation(name, {"asset": _a.value}),
+                registry, _a, io_timeout_seconds,
             )
-            for name in prefetch_names
-            if name in registry
+            for name, _a in _prefetch_invocations
         ),
         return_exceptions=True,
     )

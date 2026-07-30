@@ -160,3 +160,48 @@ class TestReviewValidation:
         )
         long_text = "這是一段非常非常長的改寫" * 10
         assert _validate_revision(original, long_text) is False
+
+
+class TestMomentumPairedDisclosure:
+    """新增 momentum 群組（RSI14、MACD、KD）的配對揭露測試。"""
+
+    def test_rsi_cited_without_macd_kd_gets_supplemented(self) -> None:
+        """引用 RSI14 但漏了 MACD 和 KD → 強制附上。"""
+        evidence = (
+            _make_evidence("BNC-SPOT-BTC-1d-RSI14", Facet.TECHNICAL, -0.1),
+            _make_evidence("BNC-SPOT-BTC-1d-MACD", Facet.TECHNICAL, +0.3),
+            _make_evidence("BNC-SPOT-BTC-1d-KD", Facet.TECHNICAL, +0.5),
+        )
+        claims = (
+            DraftClaim(
+                text="RSI 為 45，偏弱。",
+                evidence_ids=("BNC-SPOT-BTC-1d-RSI14",),
+                facet=Facet.TECHNICAL,
+                role=ClaimRole.INFERENCE,
+            ),
+        )
+        result = enforce_paired_disclosure(claims, evidence)
+        # MACD 和 KD 的 evidence_id 應該被加入
+        assert "BNC-SPOT-BTC-1d-MACD" in result[0].evidence_ids
+        assert "BNC-SPOT-BTC-1d-KD" in result[0].evidence_ids
+        assert "MACD" in result[0].text
+        assert "KD" in result[0].text
+
+    def test_macd_bearish_kd_bullish_contradiction_reduces_confidence(self) -> None:
+        """MACD 偏空 + KD 偏多 → 面內矛盾，agreement 應降低。"""
+        evidence = (
+            # 技術面內部矛盾：MACD 偏空但 KD 偏多
+            _make_evidence("BNC-SPOT-BTC-1d-MACD", Facet.TECHNICAL, -0.5),
+            _make_evidence("BNC-SPOT-BTC-1d-KD", Facet.TECHNICAL, +0.6),
+            _make_evidence("BNC-SPOT-BTC-1d-RSI14", Facet.TECHNICAL, 0.0),
+            # 其他面向
+            _make_evidence("BNC-PERP-BTC-FUNDING", Facet.POSITIONING, +0.3),
+            _make_evidence("FGI-CURRENT", Facet.SENTIMENT, -0.4),
+            _make_evidence("CG-BTC-MARKET", Facet.FUNDAMENTAL, 0.0),
+        )
+        result = assess_confidence(evidence)
+        # 技術面的 stance 會被平均為接近 neutral（矛盾內消），
+        # 加上 positioning bullish vs sentiment bearish 跨面矛盾
+        # → confidence 不該高於 70%
+        assert isinstance(result, Confidence)
+        assert result.value < 0.70, f"Expected < 70%, got {result.value:.0%}"

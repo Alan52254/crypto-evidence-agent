@@ -267,10 +267,12 @@ async def analyse(
     # 共用來源（fred_macro, fear_greed_index）只取一次（它們不分幣種）。
     _per_asset_sources = (
         "binance_spot",
+        "binance_derivatives",
         "coingecko_market",
         "market_dataset_context",
         "defillama_tvl",
         "candlestick_chart_builder",
+        "official_announcements",
     )
     _global_sources = (
         "fear_greed_index",

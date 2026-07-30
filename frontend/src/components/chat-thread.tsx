@@ -425,18 +425,27 @@ function FigureGallery({ report }: { report: AnalysisReport }) {
     })),
   );
 
-  if (figures.length === 0) return null;
+  // 去重：同一 evidenceId + caption 的圖只保留一張（避免 prefetch + gather 重複）
+  const seen = new Set<string>();
+  const uniqueFigures = figures.filter((fig) => {
+    const key = `${fig.evidenceId}-${fig.caption}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (uniqueFigures.length === 0) return null;
 
   return (
     <div className="space-y-3 border-t border-outline-variant pt-4">
       <h3 className="flex items-center gap-2 text-label-caps font-semibold uppercase text-secondary">
         <TrendingUp className="h-3.5 w-3.5" />
-        技術圖表 ({figures.length})
+        技術圖表 ({uniqueFigures.length})
       </h3>
       <div className="space-y-4">
-        {figures.map((figure) => (
+        {uniqueFigures.map((figure, idx) => (
           <figure
-            key={`${figure.evidenceId}-${figure.caption}`}
+            key={`${figure.evidenceId}-${idx}-${figure.caption}`}
             className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}

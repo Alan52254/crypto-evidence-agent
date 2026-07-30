@@ -21,6 +21,7 @@ from hoyabit_agent.domain import (
 )
 from hoyabit_agent.testing import evidence
 from hoyabit_agent.tools import (
+    apply_contested_penalty,
     assess_confidence,
     check_citations,
     evidence_gap,
@@ -395,3 +396,40 @@ def test_repeated_tool_evidence_id_is_unique_but_keeps_distinct_excerpts() -> No
     assert [item.id for item in merged] == ["BOOK"]
     assert merged[0].stance_hint == 0.4
     assert len(merged[0].excerpts) == 2
+
+
+def test_apply_contested_penalty_under_threshold_returns_unchanged() -> None:
+    conf = Confidence(
+        value=0.8,
+        facet_stances={},
+        independence=0.8,
+        coverage=0.8,
+        freshness=0.8,
+        agreement=0.8,
+        completeness=0.8,
+    )
+    res, info = apply_contested_penalty(
+        conf, supported_count=3, contested_count=1, total_claims=4
+    )
+    assert res == conf
+    assert info == {}
+
+
+def test_apply_contested_penalty_over_50_percent_applies_deduction() -> None:
+    conf = Confidence(
+        value=0.8,
+        facet_stances={},
+        independence=0.8,
+        coverage=0.8,
+        freshness=0.8,
+        agreement=0.8,
+        completeness=0.8,
+    )
+    # 3/4 = 75% contested > 50%, penalty = (0.75 - 0.5) * 0.3 = 0.075
+    res, info = apply_contested_penalty(
+        conf, supported_count=1, contested_count=3, total_claims=4
+    )
+    assert isinstance(res, Confidence)
+    assert res.value == round(0.8 - 0.075, 4)
+    assert info["penalty"] == 0.075
+    assert info["contested_ratio"] == 0.75

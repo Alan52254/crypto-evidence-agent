@@ -732,6 +732,38 @@ def _assemble(
         for claim in ledger.unsupported
     )
 
+    # ─── 結論降級標記強制檢查 ───
+    # 當核心資料缺失時，結論層不得寫成像有完整答案的主結論。
+    # 如果結論文字沒有包含降級標記（替代/補充/假說/無法回答等），
+    # 強制把 contested count +1，確保 contested penalty 生效。
+    # 這是程式碼層防護，不依賴模型記得寫。
+    from hoyabit_agent.domain import ClaimRole, Confidence as _Confidence
+    from hoyabit_agent.question import DataAvailability, DemandWeight as _DW
+
+    _DOWNGRADE_MARKERS = (
+        "替代", "補充", "背景", "假說", "條件式",
+        "無法回答", "無法直接", "無法確認", "無法判定",
+        "僅供參考", "僅為", "不可視為",
+    )
+    _has_core_gaps = any(
+        isinstance(d, CoreDataDemand)
+        and d.availability is DataAvailability.UNAVAILABLE
+        and d.weight is _DW.CORE
+        for d in _typed_demands
+    )
+    _conclusion_missing_downgrade = 0
+    if _has_core_gaps:
+        for claim in ledger.admissible:
+            if claim.role is ClaimRole.CONCLUSION:
+                if not any(marker in claim.text for marker in _DOWNGRADE_MARKERS):
+                    _conclusion_missing_downgrade += 1
+        if _conclusion_missing_downgrade > 0:
+            recorder.record(
+                TraceNodeKind.REPORT,
+                f"結論降級檢查：核心資料缺失但 {_conclusion_missing_downgrade} 則結論"
+                f"缺少降級標記（替代/假說/無法回答），強制計入 contested 比例",
+            )
+
     confidence = assess_confidence(
         gathered, as_of=as_of, core_data_demands=_typed_demands,
     )
@@ -740,21 +772,26 @@ def _assemble(
     # contested 判斷代表「引用有效但支撐薄弱或內部矛盾」。
     # 如果多數判斷都是 contested，信心度應該反映這個現實。
     # 邏輯集中在 tools.apply_contested_penalty，此處僅呼叫並記錄。
+    contested_count = len(ledger.contested) + _conclusion_missing_downgrade
     confidence, penalty_info = apply_contested_penalty(
         confidence,
         supported_count=len(ledger.supported),
-        contested_count=len(ledger.contested),
+        contested_count=contested_count,
         total_claims=len(ledger.claims),
     )
     if penalty_info:
         recorder.record(
             TraceNodeKind.REPORT,
-            f"contested penalty: supported={penalty_info['supported']}, "
-            f"contested={penalty_info['contested']}, "
-            f"ratio={penalty_info['contested_ratio']:.2%}, "
-            f"original_confidence={penalty_info['original_confidence']:.4f}, "
-            f"penalty={penalty_info['penalty']:.4f}, "
-            f"adjusted_confidence={penalty_info['adjusted_confidence']:.4f}",
+            f"爭議比例修正：{penalty_info['contested']}/{penalty_info['total_claims']} 則判斷為 contested"
+            f"（比例 {penalty_info['contested_ratio']:.0%}），懲罰 -{penalty_info['penalty']:.4f}，"
+            f"信心度 {penalty_info['original_confidence']:.4f} → {penalty_info['adjusted_confidence']:.4f}",
+        )
+    elif isinstance(confidence, _Confidence) and len(ledger.claims) >= 3:
+        contested_ratio = contested_count / len(ledger.claims)
+        recorder.record(
+            TraceNodeKind.REPORT,
+            f"爭議比例檢查：{contested_count}/{len(ledger.claims)} 則 contested"
+            f"（比例 {contested_ratio:.0%}），未超過 50% 門檻，不扣分",
         )
 
     stance = overall_stance(confidence)

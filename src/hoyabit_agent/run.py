@@ -251,33 +251,49 @@ async def analyse(
     # `candlestick_chart_builder` 也在此：技術面圖表不該取決於模型「有沒有想到
     # 要畫圖」。它是報告的固定組成，缺了它讀者只能讀數字讀不到走勢。
     # 回測模式下它不在 registry 內（LIVE only），因此會自動被跳過。
-    prefetch_names = (
+    # ─── 預取所有涉及的幣種 ───
+    # 比較題（BTC vs ETH）或單幣題都走同一條路：對每個 involved asset 都跑 prefetch。
+    # 單幣題 involved = (BTC,)，比較題 involved = (BTC, ETH)。
+    # 這確保第二個幣種不需要靠模型「記得呼叫工具」才能拿到資料。
+    # 共用來源（fred_macro, fear_greed_index）只取一次（它們不分幣種）。
+    _per_asset_sources = (
         "binance_spot",
+        "binance_derivatives",
         "coingecko_market",
         "market_dataset_context",
         "defillama_tvl",
+        "candlestick_chart_builder",
+        "official_announcements",
+    )
+    _global_sources = (
         "fear_greed_index",
         "fred_macro",
-        "candlestick_chart_builder",
     )
-    # 防呆：prefetch 名字如果打錯（不在 registry），靜默跳過會造成隱性故障。
-    # LIVE 模式下驗證；BACKTEST 模式下某些 LIVE-only 來源本來就不在 registry。
     if regime.value == "live":
-        unknown_prefetch = set(prefetch_names) - set(registry)
+        all_prefetch_names = set(_per_asset_sources) | set(_global_sources)
+        unknown_prefetch = all_prefetch_names - set(registry)
         if unknown_prefetch:
             import logging as _logging
             _logging.getLogger(__name__).warning(
                 "[prefetch] 以下預取名字不在 LIVE registry 中（可能拼寫錯誤）: %s",
                 ", ".join(sorted(unknown_prefetch)),
             )
+
+    _prefetch_invocations: list[tuple[str, Asset]] = []
+    for _asset in involved:
+        for name in _per_asset_sources:
+            if name in registry:
+                _prefetch_invocations.append((name, _asset))
+    for name in _global_sources:
+        if name in registry:
+            _prefetch_invocations.append((name, asset))  # 全域來源只用 primary asset
     prefetch_results = await asyncio.gather(
         *(
             _invoke(
-                ToolInvocation(name, {"asset": asset.value}),
-                registry, asset, io_timeout_seconds,
+                ToolInvocation(name, {"asset": _a.value}),
+                registry, _a, io_timeout_seconds,
             )
-            for name in prefetch_names
-            if name in registry
+            for name, _a in _prefetch_invocations
         ),
         return_exceptions=True,
     )

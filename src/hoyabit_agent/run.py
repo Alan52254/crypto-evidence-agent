@@ -251,6 +251,7 @@ async def analyse(
     # 要畫圖」。它是報告的固定組成，缺了它讀者只能讀數字讀不到走勢。
     # 回測模式下它不在 registry 內（LIVE only），因此會自動被跳過。
     prefetch_names = (
+        "binance_spot",
         "coingecko_market",
         "market_dataset_context",
         "defillama_tvl",
@@ -658,7 +659,8 @@ def _assemble(
         TraceNodeKind.SYNTHESISE,
         f"帳本驗證完成：supported={len(ledger.supported)}、"
         f"contested={len(ledger.contested)}、unsupported={len(ledger.unsupported)}；"
-        f"結論層證據覆蓋率 {coverage:.0%}",
+        f"結論層引用有效率 {coverage:.0%}"
+        f"（注意：此為引用是否存在的二元檢查，非判斷品質指標）",
     )
 
     # 限制分兩層，因為它們有不同的讀者與不同的安全性：
@@ -757,6 +759,39 @@ def _assemble(
     confidence = assess_confidence(
         gathered, as_of=as_of, core_data_demands=_typed_demands,
     )
+
+    # ─── 爭議比例修正 ───
+    # contested 判斷代表「引用有效但支撐薄弱或內部矛盾」。
+    # 如果多數判斷都是 contested，信心度應該反映這個現實。
+    #
+    # 與 agreement 的區分：agreement 抓的是「面與面之間方向不一致」，
+    # contested 抓的是「同一面內部訊號矛盾」或「來源品質不足」。
+    # 兩者測量不同維度，不構成重複扣分。
+    #
+    # 只在 confidence 是 Confidence（有數值）且有足夠判斷數量時調整。
+    # 少於 3 則判斷的 contested 比例統計意義不足，不啟動懲罰。
+    from hoyabit_agent.domain import Confidence as _Confidence
+
+    if isinstance(confidence, _Confidence) and len(ledger.claims) >= 3:
+        total_claims = len(ledger.claims)
+        contested_count = len(ledger.contested)
+        contested_ratio = contested_count / total_claims
+        # 超過 50% 的判斷被標記爭議時開始扣分。
+        # 公式：每超出 50% 一個百分點，扣 0.3 個百分點。
+        # 例：70% contested → penalty = 0.06, 90% contested → penalty = 0.12
+        if contested_ratio > 0.5:
+            claim_quality_penalty = (contested_ratio - 0.5) * 0.30
+            adjusted_value = max(0.0, confidence.value - claim_quality_penalty)
+            confidence = _Confidence(
+                value=round(adjusted_value, 4),
+                facet_stances=confidence.facet_stances,
+                independence=confidence.independence,
+                coverage=confidence.coverage,
+                freshness=confidence.freshness,
+                agreement=confidence.agreement,
+                completeness=confidence.completeness,
+            )
+
     stance = overall_stance(confidence)
     recorder.record(
         TraceNodeKind.REPORT,

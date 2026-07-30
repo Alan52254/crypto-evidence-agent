@@ -51,6 +51,16 @@ def _evidence_record(item: Evidence, claims: list[str]) -> dict[str, Any]:
         },
         "query_context": _infer_query_context(item),
         "related_claim": claims,
+        "figures": [
+            {
+                "kind": figure.kind.value,
+                "caption": figure.caption,
+                "src": figure.renderable_src,
+                "source_url": figure.source_url,
+                "alt": figure.alt,
+            }
+            for figure in item.figures
+        ],
         "raw_artifact_uri": None,
         "sha256": _compute_sha256(primary) if primary else None,
         "quality_score": scores["quality"],

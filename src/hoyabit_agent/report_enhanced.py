@@ -10,13 +10,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from hoyabit_agent.charts import ChartData, OHLCV, charts_to_markdown
+from hoyabit_agent.charts import ChartData, charts_to_markdown
 from hoyabit_agent.domain import (
     AnalysisOutcome,
     ClaimRole,
     Confidence,
-    Evidence,
     Facet,
+    Figure,
+    FigureKind,
     InsufficientEvidence,
     Report,
     Stance,
@@ -35,7 +36,14 @@ def enhanced_report_markdown(outcome: AnalysisOutcome, chart_data: ChartData | N
     sections.append(_executive_summary(report))
 
     # ─── 圖表區 ───
-    if chart_data and chart_data.candles:
+    # 圖來自**證據自己攜帶的 figures**，而不是呼叫端額外傳進來的 chart_data。
+    # 這是先前圖表從未出現在報告裡的原因：唯一的呼叫端（api_contract）
+    # 不傳 chart_data，那個 if 永遠是 False。
+    # 圖掛在證據上，報告只負責呈現，順帶讓每張圖都能標出它的證據識別碼。
+    figures_md = _figures_section(report)
+    if figures_md:
+        sections.append(figures_md)
+    elif chart_data and chart_data.candles:
         sections.append(charts_to_markdown(chart_data))
 
     # ─── 核心判斷 (按層次排列) ───
@@ -96,6 +104,42 @@ def _executive_summary(report: Report) -> str:
 
 ### 各面向判定
 {facet_summary}"""
+
+
+def _figures_section(report: Report) -> str:
+    """呈現所有證據攜帶的圖表，並標明各自的證據識別碼與來源性質。
+
+    自繪圖與外部圖分開陳列：前者可由原始數值重算，後者只是引用，
+    製圖正確性不由本系統保證。把兩者混在一起會讓讀者無法判斷
+    「這張圖的數字能不能核對」。
+    """
+    generated: list[tuple[str, Figure]] = []
+    external: list[tuple[str, Figure]] = []
+    for item in report.evidence:
+        for figure in item.figures:
+            target = generated if figure.kind is FigureKind.GENERATED else external
+            target.append((item.id, figure))
+
+    if not generated and not external:
+        return ""
+
+    lines = ["## 📈 圖表\n"]
+
+    if generated:
+        lines.append("### 本系統繪製（可由原始數值重算）\n")
+        for evidence_id, figure in generated:
+            lines.append(f"**{figure.caption}**　`{evidence_id}`\n")
+            lines.append(f"![{figure.alt or figure.caption}]({figure.renderable_src})\n")
+
+    if external:
+        lines.append("### 外部圖表引用（製圖正確性由原始來源負責）\n")
+        for evidence_id, figure in external:
+            lines.append(f"**{figure.caption}**　`{evidence_id}`\n")
+            lines.append(f"![{figure.alt or figure.caption}]({figure.renderable_src})\n")
+            if figure.source_url:
+                lines.append(f"> 原圖：{figure.source_url}\n")
+
+    return "\n".join(lines)
 
 
 def _format_window(report: Report) -> str:

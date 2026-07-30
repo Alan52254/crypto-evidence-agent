@@ -69,12 +69,55 @@ class SourceExcerpt:
     text: str
 
 
+class FigureKind(Enum):
+    """圖表的來源方式。決定它的溯源語意。"""
+
+    GENERATED = "generated"
+    """由本系統從原始數值繪製 —— 可被重算，屬於高可信度證據的視覺化。"""
+
+    EXTERNAL = "external"
+    """外部既有圖片（新聞、研報中的圖表）—— 我們只是引用，不保證其製圖正確。"""
+
+
+@dataclass(frozen=True)
+class Figure:
+    """證據的視覺形式 —— 一張圖，連同它的出處與說明。
+
+    刻意獨立於 `SourceExcerpt`：來源片段的語意是「可引用的原文」，
+    把 base64 圖片塞進 `excerpt.text` 會造成兩個問題 ——
+    它不是可引用的文字，而且那段文字會被送進提示詞，讓數 KB 的
+    圖片資料排擠掉真正的證據。
+
+    `data_uri` 與 `source_url` 至少要有一個：前者是我們自己畫的，
+    後者是引用外部的。兩者都沒有的 Figure 無法呈現，也無法溯源。
+    """
+
+    kind: FigureKind
+    caption: str
+    data_uri: str | None = None
+    source_url: str | None = None
+    alt: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.data_uri and not self.source_url:
+            raise ValueError("Figure 必須有 data_uri 或 source_url 之一，否則無法呈現或溯源")
+
+    @property
+    def renderable_src(self) -> str:
+        """呈現時要用的來源。自繪圖優先用內嵌資料，避免依賴外部連線。"""
+        return self.data_uri or self.source_url or ""
+
+
 @dataclass(frozen=True)
 class Evidence:
     """證據 —— 帶穩定識別碼的不可變事實單元，永遠保有回到來源片段的路徑。
 
     `event_key` 用於同事件歸併：兩則描述同一事件的證據會被併成一個
     （保留雙方的來源片段），因為轉載不構成獨立證據（ADR 0002）。
+
+    `figures` 是這項證據的視覺形式（K 線圖、走勢圖、新聞中的圖表）。
+    圖屬於證據而不是屬於報告：這樣每一張圖都掛在一個有識別碼、有出處的
+    觀察上，報告裡的圖因此天生可溯源。
     """
 
     id: str
@@ -83,6 +126,7 @@ class Evidence:
     stance_hint: float
     excerpts: tuple[SourceExcerpt, ...]
     event_key: str | None = None
+    figures: tuple[Figure, ...] = ()
 
 
 class ClaimRole(Enum):
@@ -407,6 +451,8 @@ __all__ = [
     "DraftClaim",
     "Evidence",
     "Facet",
+    "Figure",
+    "FigureKind",
     "Insufficiency",
     "InsufficientEvidence",
     "LabelAspect",

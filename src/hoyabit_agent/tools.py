@@ -225,6 +225,7 @@ def assess_confidence(
     minimum_facets: int = MINIMUM_FACETS_FOR_CONFIDENCE,
     *,
     as_of: date | datetime | None = None,
+    core_data_demands: tuple[object, ...] = (),
 ) -> ConfidenceResult:
     """信心度 — 多維度加權評估（ADR 0002 + 競賽規格）。
 
@@ -234,6 +235,12 @@ def assess_confidence(
     - 時效 (freshness): 20%
     - 一致性 (agreement): 20%
     - 完整性 (completeness): 10%
+
+    核心資料缺失懲罰（A+B 策略）：
+    - 題目核心需求不可用 (CORE + UNAVAILABLE): 每項 -0.15
+    - 題目輔助需求不可用 (SUPPORTING + UNAVAILABLE): 每項 -0.08
+    - 部分可用 (PARTIAL): 每項 -0.05
+    若懲罰後分數低於 InsufficientEvidence 門檻，直接返回第三態。
 
     `as_of` 是新鮮度的參考時間立足點(見 ADR 0005)。未指定時退回現實時鐘。
     """
@@ -309,6 +316,42 @@ def assess_confidence(
         + agreement * 0.20
         + completeness * 0.10
     )
+
+    # ─── 核心資料缺失懲罰（A+B 策略）───
+    # 題目明確要求但系統不具備的資料類型，直接下修信心度。
+    # 這不是「分析品質差」，而是「根本沒有回答主問題所需的資料」。
+    from hoyabit_agent.question import CoreDataDemand, DataAvailability, DemandWeight
+
+    core_penalty = 0.0
+    for demand in core_data_demands:
+        if not isinstance(demand, CoreDataDemand):
+            continue
+        if demand.availability is DataAvailability.UNAVAILABLE:
+            if demand.weight is DemandWeight.CORE:
+                core_penalty += 0.15  # 題目主問的東西完全沒有
+            else:
+                core_penalty += 0.08  # 輔助資料缺失
+        elif demand.availability is DataAvailability.PARTIAL:
+            core_penalty += 0.05  # 只有間接替代
+
+    value = max(0.0, value - core_penalty)
+
+    # 若懲罰後分數過低（< 0.25），且有核心需求不可用，
+    # 直接回傳 InsufficientEvidence —— 這不是「低信心」而是「無法回答」。
+    has_core_unavailable = any(
+        isinstance(d, CoreDataDemand)
+        and d.availability is DataAvailability.UNAVAILABLE
+        and d.weight is DemandWeight.CORE
+        for d in core_data_demands
+    )
+    if has_core_unavailable and value < 0.25:
+        return InsufficientEvidence(
+            facets_present=present,
+            minimum_facets_required=minimum_facets,
+            cause=Insufficiency.NO_DIRECTIONAL_SIGNAL,
+            directional_facets=frozenset(directional),
+            facet_stances=stances,
+        )
 
     return Confidence(
         value=round(value, 4),

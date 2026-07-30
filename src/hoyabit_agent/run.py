@@ -448,7 +448,36 @@ async def analyse(
         )
 
     # ─── 組裝階段 ───
-    drafts = await model.synthesise(asset, gathered, request.question)
+    # 在送入 synthesise 前，把核心資料缺失上下文注入 question 字串。
+    # 這讓模型在推理時就知道哪些資料不存在，而不是事後才發現。
+    # seam 介面不變（question 本來就是自由文字），只是內容更豐富。
+    synthesis_question = request.question
+    from hoyabit_agent.question import CoreDataDemand, DataAvailability, DemandWeight as _DW
+
+    _synth_demands = tuple(
+        d for d in requirement.core_data_demands if isinstance(d, CoreDataDemand)
+    )
+    _synth_unavailable = [
+        d for d in _synth_demands if d.availability is DataAvailability.UNAVAILABLE
+    ]
+    if _synth_unavailable:
+        gap_labels = "、".join(d.label for d in _synth_unavailable)
+        core_labels = [d.label for d in _synth_unavailable if d.weight is _DW.CORE]
+        if core_labels:
+            synthesis_question = (
+                f"{request.question}\n\n"
+                f"[系統標記] 本次分析不具備以下核心資料源：{gap_labels}。"
+                f"其中「{'、'.join(core_labels)}」為題目主問的資料類型。"
+                f"你的分析僅能基於已取得的替代面向證據，不得假裝已回答主問題。"
+            )
+        else:
+            synthesis_question = (
+                f"{request.question}\n\n"
+                f"[系統標記] 本次分析不具備以下輔助資料源：{gap_labels}。"
+                f"結論完整度受限，請在 watch 判斷中說明。"
+            )
+
+    drafts = await model.synthesise(asset, gathered, synthesis_question)
 
     # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構。
     #
@@ -481,6 +510,7 @@ async def analyse(
         as_of=request.as_of_date,
         unavailable_facets=requirement.unavailable_facets,
         boundary_notes=requirement.boundary_notes,
+        core_data_demands=requirement.core_data_demands,
     )
     return AnalysisOutcome(
         run_id=identifier,
@@ -580,6 +610,7 @@ def _assemble(
     as_of: date | None = None,
     unavailable_facets: frozenset[Facet] = frozenset(),
     boundary_notes: tuple[str, ...] = (),
+    core_data_demands: tuple[object, ...] = (),
 ) -> Report:
     """組裝階段 —— 判斷先經帳本驗證，再渲染。
 
@@ -636,10 +667,56 @@ def _assemble(
     # 回測取不到的面明列為「資料不可得」，未關閉的必補缺口如實揭露。
     # 這些**不含任何被拒判斷的原文**，因此放進報告本體是安全的
     # （見 ADR 0005 / Sol A；命題要求明確指出限制，不把不確定性藏起來）。
-    report_limitations = [
+    report_limitations: list[str] = []
+
+    # ─── A+B 核心資料缺失聲明（最高優先，放在所有限制之前）───
+    # 這是「題目問的核心東西我們沒有」的強制揭露。不是一般的 gap，
+    # 而是系統能力邊界的誠實告知。
+    from hoyabit_agent.question import CoreDataDemand, DataAvailability, DemandWeight
+
+    _typed_demands: tuple[CoreDataDemand, ...] = tuple(
+        d for d in core_data_demands if isinstance(d, CoreDataDemand)
+    )
+    _unavailable_core = tuple(
+        d for d in _typed_demands
+        if d.availability is DataAvailability.UNAVAILABLE and d.weight is DemandWeight.CORE
+    )
+    _unavailable_supporting = tuple(
+        d for d in _typed_demands
+        if d.availability is DataAvailability.UNAVAILABLE and d.weight is DemandWeight.SUPPORTING
+    )
+    _partial = tuple(
+        d for d in _typed_demands
+        if d.availability is DataAvailability.PARTIAL
+    )
+
+    if _unavailable_core:
+        labels = "、".join(d.label for d in _unavailable_core)
+        report_limitations.append(
+            f"⚠️ 題目核心資料缺失：本系統不具備 {labels} 的資料源，"
+            f"無法直接回答題目的主要問題。以下分析僅為可得面向的替代參考，"
+            f"不可視為對主問題的完整回答。"
+        )
+        for d in _unavailable_core:
+            report_limitations.append(f"  • {d.label}：{d.fallback_note}")
+
+    if _unavailable_supporting:
+        labels = "、".join(d.label for d in _unavailable_supporting)
+        report_limitations.append(
+            f"輔助資料缺失：{labels} —— 結論完整度受限。"
+        )
+
+    if _partial:
+        for d in _partial:
+            report_limitations.append(
+                f"部分可用資料：{d.label} — {d.fallback_note}"
+            )
+
+    # 回測模式下不可得的面
+    report_limitations.extend(
         f"{facet.value} 面資料不可得（回測模式僅有資料集 OHLCV，無合規的即時來源）"
         for facet in sorted(unavailable_facets, key=lambda f: f.value)
-    ]
+    )
     # 邊界聲明（未命中已知題型、預測題劃界）—— 同樣是資料/方法論層級,
     # 不含被拒判斷原文,可安全進報告本體（見 question.EvidenceRequirement）。
     report_limitations.extend(boundary_notes)
@@ -677,7 +754,9 @@ def _assemble(
         for claim in ledger.unsupported
     )
 
-    confidence = assess_confidence(gathered, as_of=as_of)
+    confidence = assess_confidence(
+        gathered, as_of=as_of, core_data_demands=_typed_demands,
+    )
     stance = overall_stance(confidence)
     recorder.record(
         TraceNodeKind.REPORT,

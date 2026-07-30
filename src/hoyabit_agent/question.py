@@ -10,10 +10,173 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from hoyabit_agent.domain import AnalysisRegime, Asset, Facet
+
+
+# ─── 核心資料需求偵測 ───────────────────────────────────────────────
+#
+# 判斷題目是否要求系統不具備的特定資料類型。確定性關鍵字比對，
+# 不是 LLM 分類。觸發時強制在報告頂部插入缺失聲明並懲罰信心度。
+
+
+class DataAvailability(Enum):
+    """資料可用性三態 —— 決定懲罰力度與聲明措辭。"""
+
+    AVAILABLE = "available"
+    """系統有完整的第一手資料源。"""
+
+    PARTIAL = "partial"
+    """系統有間接或不完整的資料源，可作背景參考但不能替代主答案。"""
+
+    UNAVAILABLE = "unavailable"
+    """系統完全沒有對應資料源。"""
+
+
+class DemandWeight(Enum):
+    """資料需求在題目中的權重 —— 決定信心度懲罰力度。"""
+
+    CORE = "core"
+    """題目主問的就是這個資料。缺失 = 無法回答主問題。"""
+
+    SUPPORTING = "supporting"
+    """題目輔助需要的資料。缺失 = 結論不完整但仍可部分回答。"""
+
+
+@dataclass(frozen=True)
+class CoreDataDemand:
+    """題目明確要求但系統可能不具備的特定資料類型。
+
+    一個 demand 代表「題目提到了 X，而我們對 X 的能力是 Y」。
+    觸發方式是確定性關鍵字比對，不依賴 LLM。
+    """
+
+    label: str
+    """人類可讀的資料類型名稱，如「交易所儲備量」。"""
+
+    availability: DataAvailability
+    """系統對這個資料類型的能力。"""
+
+    weight: DemandWeight
+    """這個需求在題目語境中的重要性。"""
+
+    fallback_note: str
+    """告訴讀者：缺了這個資料，替代分析能做到什麼、不能做到什麼。"""
+
+
+# 關鍵字 → 需求定義。每組是 (markers, label, availability, fallback_note)。
+# availability 是靜態的（代表系統能力），weight 由偵測時的位置決定（見下方函式）。
+_DATA_DEMAND_REGISTRY: tuple[
+    tuple[tuple[str, ...], str, DataAvailability, str], ...
+] = (
+    (
+        ("交易所儲備", "exchange reserve", "exchange inflow", "exchange outflow",
+         "儲備量", "淨流入", "淨流出"),
+        "交易所儲備量",
+        DataAvailability.UNAVAILABLE,
+        "無法判斷供給端流入/流出；僅能從衍生品端（OI、資金費率）間接推測市場槓桿方向",
+    ),
+    (
+        ("巨鯨", "whale", "大額轉帳", "大戶", "whale transfer", "whale movement"),
+        "巨鯨轉移 / 大額轉帳",
+        DataAvailability.UNAVAILABLE,
+        "無法追蹤鏈上大額轉帳；僅能從盤口深度與 OI 變化間接推測大戶行為",
+    ),
+    (
+        ("清算", "liquidation", "爆倉", "清算圖", "liquidation heatmap",
+         "liquidation map", "清算價格"),
+        "清算圖譜 / 爆倉分布",
+        DataAvailability.UNAVAILABLE,
+        "無法取得上/下方清算密度分布；僅能從 OI 變化與資金費率推測槓桿壓力方向",
+    ),
+    (
+        ("活躍地址", "active address", "鏈上活動", "on-chain activity",
+         "鏈上數據", "on-chain data", "鏈上指標"),
+        "鏈上活躍度指標",
+        DataAvailability.UNAVAILABLE,
+        "無法取得活躍地址、交易筆數等鏈上活動指標",
+    ),
+    (
+        ("dex volume", "dex 交易量", "去中心化交易", "dex交易"),
+        "DEX 交易量",
+        DataAvailability.UNAVAILABLE,
+        "無法取得去中心化交易所交易量數據",
+    ),
+    (
+        ("gas fee", "gas 費", "gas費", "鏈上手續費", "gas price"),
+        "Gas 費用",
+        DataAvailability.UNAVAILABLE,
+        "無法評估鏈上擁塞程度與手續費趨勢",
+    ),
+    (
+        ("質押", "staking", "staking yield", "質押收益", "質押率"),
+        "質押收益 / 質押率",
+        DataAvailability.UNAVAILABLE,
+        "無法取得質押相關收益與鎖倉比例數據",
+    ),
+    (
+        ("美股", "s&p 500", "s&p500", "納斯達克", "nasdaq", "道瓊", "dow jones",
+         "標普", "sp500"),
+        "美股指數",
+        DataAvailability.PARTIAL,
+        "僅有 FRED 宏觀指標（利率、M2、CPI）可作間接背景，無即時美股行情",
+    ),
+    (
+        ("黃金", "gold", "xau"),
+        "黃金價格",
+        DataAvailability.PARTIAL,
+        "僅有美元指數（DXY）間接參考，無即時黃金行情",
+    ),
+    (
+        ("匯率", "日圓", "日元", "yen", "歐元", "eur"),
+        "外匯匯率",
+        DataAvailability.PARTIAL,
+        "僅有 FRED 美元指數趨勢可作間接參考，無即時外匯行情",
+    ),
+)
+
+
+def detect_core_data_demands(question: str) -> tuple[CoreDataDemand, ...]:
+    """從題目文字偵測核心資料需求。確定性關鍵字比對，無 I/O。
+
+    權重判定邏輯：如果一個資料類型的關鍵字出現在題目的**前半段**
+    或被動詞（分析、評估、判斷）緊鄰，視為 CORE；否則視為 SUPPORTING。
+    這是啟發式，不需要完美 —— 只要能區分「題目主問的」和「順帶提到的」。
+    """
+    lowered = question.casefold()
+    half_point = len(lowered) // 2
+    demands: list[CoreDataDemand] = []
+
+    for markers, label, availability, fallback_note in _DATA_DEMAND_REGISTRY:
+        matched_pos: int | None = None
+        for marker in markers:
+            pos = lowered.find(marker.casefold())
+            if pos != -1:
+                if matched_pos is None or pos < matched_pos:
+                    matched_pos = pos
+                break
+
+        if matched_pos is None:
+            continue
+
+        # 權重判定：出現在前半段 → CORE，後半段 → SUPPORTING
+        # 額外：如果 availability 已經是 UNAVAILABLE 且是前半段命中，
+        # 那就是「題目主問的東西我們沒有」—— 最嚴重的情況。
+        weight = (
+            DemandWeight.CORE if matched_pos <= half_point
+            else DemandWeight.SUPPORTING
+        )
+
+        demands.append(CoreDataDemand(
+            label=label,
+            availability=availability,
+            weight=weight,
+            fallback_note=fallback_note,
+        ))
+
+    return tuple(demands)
 
 
 class QuestionType(Enum):
@@ -146,6 +309,36 @@ class EvidenceRequirement:
     最終流入 `Report.limitations`,讓評審在 final_report.md 看得到系統
     如何界定自己的能力邊界,而不是靜默地把不確定性藏起來。
     """
+    core_data_demands: tuple[CoreDataDemand, ...] = ()
+    """題目明確要求但系統可能不具備的特定資料類型。
+
+    偵測到 UNAVAILABLE 或 PARTIAL 的需求時，報告頂部強制插入缺失聲明，
+    信心度施加懲罰。這是 A+B 混合策略的確定性骨幹。
+    """
+
+    @property
+    def has_core_data_gaps(self) -> bool:
+        """題目的核心需求中是否有系統完全不具備的資料。"""
+        return any(
+            d.availability is DataAvailability.UNAVAILABLE and d.weight is DemandWeight.CORE
+            for d in self.core_data_demands
+        )
+
+    @property
+    def core_missing_demands(self) -> tuple[CoreDataDemand, ...]:
+        """所有不可用（UNAVAILABLE）的需求。"""
+        return tuple(
+            d for d in self.core_data_demands
+            if d.availability is DataAvailability.UNAVAILABLE
+        )
+
+    @property
+    def partial_demands(self) -> tuple[CoreDataDemand, ...]:
+        """所有部分可用（PARTIAL）的需求。"""
+        return tuple(
+            d for d in self.core_data_demands
+            if d.availability is DataAvailability.PARTIAL
+        )
 
     def describe(self) -> str:
         """給模型與 Execution Log 看的敘述。"""
@@ -160,6 +353,17 @@ class EvidenceRequirement:
         if self.unavailable_facets:
             facets = "、".join(sorted(f.value for f in self.unavailable_facets))
             lines.append(f"回測模式資料不可得的證據面(將列為限制)：{facets}")
+        if self.core_data_demands:
+            for d in self.core_data_demands:
+                status = (
+                    "不可用" if d.availability is DataAvailability.UNAVAILABLE
+                    else "部分可用" if d.availability is DataAvailability.PARTIAL
+                    else "可用"
+                )
+                priority = "核心" if d.weight is DemandWeight.CORE else "輔助"
+                lines.append(
+                    f"[{priority}資料需求] {d.label}：{status} — {d.fallback_note}"
+                )
         for note in self.boundary_notes:
             lines.append(f"邊界聲明：{note}")
         return "\n".join(lines)
@@ -228,6 +432,7 @@ def derive_requirement(
             require_both_directions=hypothesis_flavoured,
             require_symmetric_coverage=True,
             assets=assets,
+            core_data_demands=detect_core_data_demands(question),
         )
 
     if kind is QuestionType.HYPOTHESIS_VERIFICATION:
@@ -238,6 +443,7 @@ def derive_requirement(
             require_both_directions=True,
             require_symmetric_coverage=False,
             assets=assets,
+            core_data_demands=detect_core_data_demands(question),
         )
 
     required_facets = frozenset(Facet)
@@ -266,6 +472,7 @@ def derive_requirement(
         assets=assets,
         unavailable_facets=unavailable_facets,
         boundary_notes=tuple(boundary_notes),
+        core_data_demands=detect_core_data_demands(question),
     )
 
 
@@ -290,9 +497,13 @@ def _matches(lowered_question: str, markers: tuple[str, ...]) -> bool:
 
 
 __all__ = [
+    "CoreDataDemand",
+    "DataAvailability",
+    "DemandWeight",
     "EvidenceRequirement",
     "QuestionType",
     "classify_question",
     "derive_requirement",
+    "detect_core_data_demands",
     "mentioned_assets",
 ]

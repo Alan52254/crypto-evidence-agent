@@ -45,7 +45,6 @@ DEFAULT_REASONING_MODEL = "gemini-3.6-flash"
 DEFAULT_LABOUR_MODEL = DEFAULT_REASONING_MODEL
 
 API_KEY_ENV = "GEMINI_API_KEY"
-API_KEY_2_ENV = "GEMINI_API_KEY_2"
 MODEL_ENV = "GEMINI_MODEL"
 LABOUR_MODEL_ENV = "GEMINI_LABOUR_MODEL"
 
@@ -102,12 +101,19 @@ class GeminiProvider:
             return None
         configured_model = os.environ.get(MODEL_ENV, DEFAULT_REASONING_MODEL).strip()
         configured_labour = os.environ.get(LABOUR_MODEL_ENV, DEFAULT_LABOUR_MODEL).strip()
-        extra_key = os.environ.get(API_KEY_2_ENV, "").strip()
+        # 收集所有 GEMINI_API_KEY_N 環境變數（支援無限把 key 輪換）
+        extra_keys: list[str] = []
+        for i in range(2, 20):  # 支援最多 20 把 key
+            key = os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
+            if key:
+                extra_keys.append(key)
+            else:
+                break
         return cls(
             client, api_key,
             model=configured_model,
             labour_model=configured_labour,
-            extra_keys=(extra_key,) if extra_key else (),
+            extra_keys=tuple(extra_keys),
         )
 
     # -- 推理層 ---------------------------------------------------------

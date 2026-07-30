@@ -32,27 +32,26 @@ export function FloatingCandlestickModal({
 
   if (!isOpen) return null;
 
-  // Generate sample points if data is empty for demonstration
-  const points: CandlestickPoint[] =
-    data.length > 0
-      ? data
-      : Array.from({ length: 24 }).map((_, i) => {
-          const basePrice = asset === "BTC" ? 67000 : asset === "ETH" ? 3400 : 150;
-          const randomDelta = (Math.random() - 0.48) * (basePrice * 0.015);
-          const close = basePrice + randomDelta;
-          const open = close + (Math.random() - 0.5) * (basePrice * 0.01);
-          const high = Math.max(open, close) + Math.random() * (basePrice * 0.008);
-          const low = Math.min(open, close) - Math.random() * (basePrice * 0.008);
-          return {
-            date: `07-${20 + Math.floor(i / 6)} ${String((i % 6) * 4).padStart(2, "0")}:00`,
-            open,
-            high,
-            low,
-            close,
-            volume: Math.floor(Math.random() * 5000 + 1000),
-            rsi: 45 + Math.random() * 25,
-          };
-        });
+  // 沒有真實資料時不顯示假圖 —— 展示假 K 線會誤導使用者
+  const points: CandlestickPoint[] = data;
+
+  if (points.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="relative flex flex-col items-center justify-center rounded-3xl border border-outline-variant bg-surface-container-lowest p-8 shadow-2xl w-full max-w-md">
+          <span className="text-label-md text-secondary mb-4">
+            {asset} / USDT — 無可用 K 線資料
+          </span>
+          <p className="text-body-sm text-on-surface-variant text-center mb-4">
+            尚未取得即時行情數據。請執行一次分析後再開啟此圖表。
+          </p>
+          <Button variant="secondary" onClick={onClose} className="min-h-0 py-1.5 px-3 rounded-xl text-xs">
+            關閉視窗
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const latestCandle = points[points.length - 1];
   const activeCandle = hoveredCandle || latestCandle;

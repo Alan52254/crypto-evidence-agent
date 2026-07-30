@@ -48,6 +48,7 @@ from hoyabit_agent.seams import (
     ToolSpec,
 )
 from hoyabit_agent.tools import (
+    apply_contested_penalty,
     as_of_reference,
     assess_confidence,
     evidence_gap,
@@ -259,6 +260,16 @@ async def analyse(
         "fred_macro",
         "candlestick_chart_builder",
     )
+    # 防呆：prefetch 名字如果打錯（不在 registry），靜默跳過會造成隱性故障。
+    # LIVE 模式下驗證；BACKTEST 模式下某些 LIVE-only 來源本來就不在 registry。
+    if regime.value == "live":
+        unknown_prefetch = set(prefetch_names) - set(registry)
+        if unknown_prefetch:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "[prefetch] 以下預取名字不在 LIVE registry 中（可能拼寫錯誤）: %s",
+                ", ".join(sorted(unknown_prefetch)),
+            )
     prefetch_results = await asyncio.gather(
         *(
             _invoke(
@@ -501,6 +512,13 @@ async def analyse(
         # 即使審查層未生效或漏掉配對規則，這一步也會補上。
         drafts = enforce_paired_disclosure(drafts, gathered)
 
+    # 確定性指標引用檢核 — 掃描 claim 中的技術指標數值，
+    # 標記無 evidence 對應的幻覺數字。在 paired disclosure 之後執行，
+    # 因為 paired disclosure 可能新增合法的指標引用。
+    if drafts:
+        from hoyabit_agent.indicator_guard import enforce_indicator_citations
+        drafts = enforce_indicator_citations(drafts, gathered)
+
     report = _assemble(
         asset,
         gathered,
@@ -669,63 +687,21 @@ def _assemble(
     # 回測取不到的面明列為「資料不可得」，未關閉的必補缺口如實揭露。
     # 這些**不含任何被拒判斷的原文**，因此放進報告本體是安全的
     # （見 ADR 0005 / Sol A；命題要求明確指出限制，不把不確定性藏起來）。
-    report_limitations: list[str] = []
-
-    # ─── A+B 核心資料缺失聲明（最高優先，放在所有限制之前）───
-    # 這是「題目問的核心東西我們沒有」的強制揭露。不是一般的 gap，
-    # 而是系統能力邊界的誠實告知。
-    from hoyabit_agent.question import CoreDataDemand, DataAvailability, DemandWeight
+    from hoyabit_agent.limitations import build_report_limitations
+    from hoyabit_agent.question import CoreDataDemand
 
     _typed_demands: tuple[CoreDataDemand, ...] = tuple(
         d for d in core_data_demands if isinstance(d, CoreDataDemand)
     )
-    _unavailable_core = tuple(
-        d for d in _typed_demands
-        if d.availability is DataAvailability.UNAVAILABLE and d.weight is DemandWeight.CORE
-    )
-    _unavailable_supporting = tuple(
-        d for d in _typed_demands
-        if d.availability is DataAvailability.UNAVAILABLE and d.weight is DemandWeight.SUPPORTING
-    )
-    _partial = tuple(
-        d for d in _typed_demands
-        if d.availability is DataAvailability.PARTIAL
-    )
 
-    if _unavailable_core:
-        labels = "、".join(d.label for d in _unavailable_core)
-        report_limitations.append(
-            f"⚠️ 題目核心資料缺失：本系統不具備 {labels} 的資料源，"
-            f"無法直接回答題目的主要問題。以下分析僅為可得面向的替代參考，"
-            f"不可視為對主問題的完整回答。"
-        )
-        for d in _unavailable_core:
-            report_limitations.append(f"  • {d.label}：{d.fallback_note}")
-
-    if _unavailable_supporting:
-        labels = "、".join(d.label for d in _unavailable_supporting)
-        report_limitations.append(
-            f"輔助資料缺失：{labels} —— 結論完整度受限。"
-        )
-
-    if _partial:
-        for d in _partial:
-            report_limitations.append(
-                f"部分可用資料：{d.label} — {d.fallback_note}"
-            )
-
-    # 回測模式下不可得的面
-    report_limitations.extend(
-        f"{facet.value} 面資料不可得（回測模式僅有資料集 OHLCV，無合規的即時來源）"
-        for facet in sorted(unavailable_facets, key=lambda f: f.value)
+    report_limitations = build_report_limitations(
+        core_data_demands=_typed_demands,
+        unavailable_facets=unavailable_facets,
+        boundary_notes=boundary_notes,
+        blocking_gap_details=tuple(
+            gap.detail for gap in assessment.blocking_gaps
+        ) if assessment is not None else (),
     )
-    # 邊界聲明（未命中已知題型、預測題劃界）—— 同樣是資料/方法論層級,
-    # 不含被拒判斷原文,可安全進報告本體（見 question.EvidenceRequirement）。
-    report_limitations.extend(boundary_notes)
-    if assessment is not None:
-        report_limitations.extend(
-            f"未關閉的證據缺口：{gap.detail}" for gap in assessment.blocking_gaps
-        )
 
     # trace_limitations —— 再額外納入被拒/爭議判斷的說明（含原文），僅供推論軌跡稽核。
     # 這些**刻意不進報告本體**：被拒判斷的原文出現在報告裡，會被誤讀成系統的主張。
@@ -763,34 +739,23 @@ def _assemble(
     # ─── 爭議比例修正 ───
     # contested 判斷代表「引用有效但支撐薄弱或內部矛盾」。
     # 如果多數判斷都是 contested，信心度應該反映這個現實。
-    #
-    # 與 agreement 的區分：agreement 抓的是「面與面之間方向不一致」，
-    # contested 抓的是「同一面內部訊號矛盾」或「來源品質不足」。
-    # 兩者測量不同維度，不構成重複扣分。
-    #
-    # 只在 confidence 是 Confidence（有數值）且有足夠判斷數量時調整。
-    # 少於 3 則判斷的 contested 比例統計意義不足，不啟動懲罰。
-    from hoyabit_agent.domain import Confidence as _Confidence
-
-    if isinstance(confidence, _Confidence) and len(ledger.claims) >= 3:
-        total_claims = len(ledger.claims)
-        contested_count = len(ledger.contested)
-        contested_ratio = contested_count / total_claims
-        # 超過 50% 的判斷被標記爭議時開始扣分。
-        # 公式：每超出 50% 一個百分點，扣 0.3 個百分點。
-        # 例：70% contested → penalty = 0.06, 90% contested → penalty = 0.12
-        if contested_ratio > 0.5:
-            claim_quality_penalty = (contested_ratio - 0.5) * 0.30
-            adjusted_value = max(0.0, confidence.value - claim_quality_penalty)
-            confidence = _Confidence(
-                value=round(adjusted_value, 4),
-                facet_stances=confidence.facet_stances,
-                independence=confidence.independence,
-                coverage=confidence.coverage,
-                freshness=confidence.freshness,
-                agreement=confidence.agreement,
-                completeness=confidence.completeness,
-            )
+    # 邏輯集中在 tools.apply_contested_penalty，此處僅呼叫並記錄。
+    confidence, penalty_info = apply_contested_penalty(
+        confidence,
+        supported_count=len(ledger.supported),
+        contested_count=len(ledger.contested),
+        total_claims=len(ledger.claims),
+    )
+    if penalty_info:
+        recorder.record(
+            TraceNodeKind.REPORT,
+            f"contested penalty: supported={penalty_info['supported']}, "
+            f"contested={penalty_info['contested']}, "
+            f"ratio={penalty_info['contested_ratio']:.2%}, "
+            f"original_confidence={penalty_info['original_confidence']:.4f}, "
+            f"penalty={penalty_info['penalty']:.4f}, "
+            f"adjusted_confidence={penalty_info['adjusted_confidence']:.4f}",
+        )
 
     stance = overall_stance(confidence)
     recorder.record(

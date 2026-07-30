@@ -376,6 +376,56 @@ def assess_confidence(
     )
 
 
+def apply_contested_penalty(
+    confidence: ConfidenceResult,
+    *,
+    supported_count: int,
+    contested_count: int,
+    total_claims: int,
+) -> tuple[ConfidenceResult, dict[str, float]]:
+    """依判斷爭議比例修正信心度。回傳 (adjusted_confidence, penalty_info)。
+
+    penalty_info 包含 contested_ratio、penalty_value 等，供 trace log 使用。
+    若不需要修正（比例 <= 50% 或判斷數不足），回傳原始 confidence 與空 dict。
+
+    設計：此函式與 assess_confidence 刻意分開 —— assess_confidence 只看
+    「證據本身的品質」，本函式看「模型產出判斷的品質」。兩者測量不同東西，
+    但共同決定最終信心度。分開讓各自可獨立測試。
+    """
+    if not isinstance(confidence, Confidence) or total_claims < 3:
+        return confidence, {}
+
+    contested_ratio = contested_count / total_claims
+    if contested_ratio <= 0.5:
+        return confidence, {}
+
+    # 每超出 50% 一個百分點，扣 0.3 個百分點
+    penalty = (contested_ratio - 0.5) * 0.30
+    adjusted = max(0.0, confidence.value - penalty)
+
+    adjusted_confidence = Confidence(
+        value=round(adjusted, 4),
+        facet_stances=confidence.facet_stances,
+        independence=confidence.independence,
+        coverage=confidence.coverage,
+        freshness=confidence.freshness,
+        agreement=confidence.agreement,
+        completeness=confidence.completeness,
+    )
+
+    info = {
+        "supported": supported_count,
+        "contested": contested_count,
+        "total_claims": total_claims,
+        "contested_ratio": contested_ratio,
+        "original_confidence": confidence.value,
+        "penalty": penalty,
+        "adjusted_confidence": adjusted,
+    }
+
+    return adjusted_confidence, info
+
+
 def overall_stance(confidence: ConfidenceResult) -> Stance:
     """報告的整體方向。
 

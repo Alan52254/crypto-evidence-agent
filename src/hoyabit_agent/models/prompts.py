@@ -219,36 +219,14 @@ def synthesis_prompt(
     asset: Asset,
     evidence: tuple[Evidence, ...],
     question: str = "請分析當前市場狀況",
-    core_data_demands: tuple[object, ...] = (),
 ) -> str:
-    """把證據清單寫成給模型的敘述，含每項證據的 ID 與原文。"""
+    """把證據清單寫成給模型的敘述，含每項證據的 ID 與原文。
+
+    核心資料缺失的上下文由 run.py 在呼叫 model.synthesise() 前
+    直接注入 question 字串，不經過此函式。這樣 ModelProvider 介面
+    不需要知道 core_data_demands 這個業務概念。
+    """
     lines = [f"分析標的：{asset.value}", f"分析題目：{question}", ""]
-
-    # ─── 核心資料缺失聲明（確定性注入，不依賴模型自行發現）───
-    from hoyabit_agent.question import CoreDataDemand, DataAvailability, DemandWeight
-
-    _typed: list[CoreDataDemand] = [
-        d for d in core_data_demands if isinstance(d, CoreDataDemand)
-    ]
-    _unavailable = [d for d in _typed if d.availability is DataAvailability.UNAVAILABLE]
-    _partial = [d for d in _typed if d.availability is DataAvailability.PARTIAL]
-
-    if _unavailable or _partial:
-        lines.append("── [核心資料缺失] 以下為系統確認不具備的資料類型 ──")
-        for d in _unavailable:
-            priority = "核心" if d.weight is DemandWeight.CORE else "輔助"
-            lines.append(f"  ✗ [{priority}] {d.label}：完全不可用 — {d.fallback_note}")
-        for d in _partial:
-            priority = "核心" if d.weight is DemandWeight.CORE else "輔助"
-            lines.append(f"  △ [{priority}] {d.label}：僅部分可用 — {d.fallback_note}")
-        lines.append("")
-        if any(d.weight is DemandWeight.CORE for d in _unavailable):
-            lines.append(
-                "⚠️ 題目的核心問題涉及上述不可用資料。"
-                "你的第一則判斷必須聲明此限制。"
-                "結論不得假裝已回答主問題，僅能提供替代面向的背景分析。"
-            )
-        lines.append("")
 
     lines.append("可用證據：")
 

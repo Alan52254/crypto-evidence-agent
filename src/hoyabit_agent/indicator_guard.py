@@ -1,0 +1,186 @@
+"""確定性指標引用檢核 — 掃描 claim text 中的技術指標數值，驗證有 evidence 對應。
+
+比照 `enforce_paired_disclosure` 的模式：在 review 之後、`_assemble` 之前執行。
+不依賴 LLM，純 regex + 查表。
+
+設計考量：
+- 只抓「指標名稱 + 數字」的組合（如 "RSI 72.3"、"MACD -0.5"）
+- 對每個數字檢查是否能在 evidence excerpts/summary 中找到近似值
+- 找不到的 → 從 claim text 中移除該數字段落，並在 text 末尾加註
+- 不 drop 整則 claim（太激進），只 sanitize 幻覺數字
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+
+from hoyabit_agent.domain import DraftClaim, Evidence
+
+logger = logging.getLogger(__name__)
+
+# 技術指標的 regex pattern：指標名 + 可能的括號參數 + 冒號/等號/空格 + 數字
+# 例如："RSI(14) 72.3", "MACD = -1.5", "KD %K 85.2", "布林上軌 $68,500"
+_INDICATOR_NAMES = (
+    r"RSI",
+    r"MACD",
+    r"KD",
+    r"KDJ",
+    r"%K",
+    r"%D",
+    r"DIF",
+    r"DEA",
+    r"EMA",
+    r"布林",
+    r"Bollinger",
+    r"BB",
+    r"標準差",
+    r"StdDev",
+)
+
+_INDICATOR_PATTERN = re.compile(
+    r"(?P<indicator>"
+    + "|".join(_INDICATOR_NAMES)
+    + r")"
+    r"[\s\(\)\d,]*"  # 可能跟括號或參數
+    r"[=:：\s]*"  # 分隔符
+    r"(?P<value>[-+]?\d+[,.]?\d*)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class OrphanIndicator:
+    """claim 中出現但無 evidence 對應的指標數值。"""
+
+    claim_index: int
+    indicator: str
+    value: str
+    claim_text_snippet: str
+
+
+def find_orphan_indicators(
+    drafts: tuple[DraftClaim, ...],
+    evidence: tuple[Evidence, ...],
+) -> tuple[OrphanIndicator, ...]:
+    """掃描所有 claim，找出無 evidence 對應的指標數值。
+
+    「對應」的定義：claim 引用的 evidence_ids 中，至少有一項的
+    summary 或 excerpt.text 包含該數值（允許 ±1% 容差）。
+    """
+    # 建立 evidence_id → 所有文字內容（summary + excerpts）的查找表
+    evidence_text_map: dict[str, str] = {}
+    for item in evidence:
+        texts = [item.summary]
+        for excerpt in item.excerpts:
+            texts.append(excerpt.text)
+        evidence_text_map[item.id] = " ".join(texts)
+
+    orphans: list[OrphanIndicator] = []
+
+    for idx, claim in enumerate(drafts):
+        matches = list(_INDICATOR_PATTERN.finditer(claim.text))
+        if not matches:
+            continue
+
+        # 收集此 claim 引用的所有 evidence 文字
+        cited_text = " ".join(
+            evidence_text_map.get(eid, "") for eid in claim.evidence_ids
+        )
+
+        for match in matches:
+            indicator_name = match.group("indicator")
+            value_str = match.group("value").replace(",", "")
+
+            try:
+                numeric_value = float(value_str)
+            except ValueError:
+                continue
+
+            # 檢查 cited evidence 中是否包含此數值（±1% 或 ±0.5 絕對容差）
+            if not _value_found_in_text(numeric_value, cited_text):
+                orphans.append(OrphanIndicator(
+                    claim_index=idx,
+                    indicator=indicator_name,
+                    value=value_str,
+                    claim_text_snippet=claim.text[:80],
+                ))
+
+    return tuple(orphans)
+
+
+def enforce_indicator_citations(
+    drafts: tuple[DraftClaim, ...],
+    evidence: tuple[Evidence, ...],
+) -> tuple[DraftClaim, ...]:
+    """掃描 claim text，若含技術指標數值但無對應 evidence_id，標記警告。
+
+    策略：不 drop claim，而是在有孤兒數字的 claim text 末尾加上警告標記。
+    這讓 claim 仍然通過，但讀者和稽核者能看到哪些數字可能是幻覺。
+
+    若無任何孤兒數字，回傳原始 drafts（零開銷）。
+    """
+    orphans = find_orphan_indicators(drafts, evidence)
+    if not orphans:
+        return drafts
+
+    # 按 claim_index 分組
+    orphan_by_claim: dict[int, list[OrphanIndicator]] = {}
+    for orphan in orphans:
+        orphan_by_claim.setdefault(orphan.claim_index, []).append(orphan)
+
+    result = list(drafts)
+    for idx, claim_orphans in orphan_by_claim.items():
+        claim = result[idx]
+        indicators = ", ".join(
+            f"{o.indicator}={o.value}" for o in claim_orphans
+        )
+        warning = f"（⚠️ 以下數值未在引用證據中找到對應：{indicators}）"
+
+        logger.warning(
+            "[indicator_guard] claim #%d has orphan indicators: %s",
+            idx, indicators,
+        )
+
+        result[idx] = DraftClaim(
+            text=f"{claim.text} {warning}",
+            evidence_ids=claim.evidence_ids,
+            facet=claim.facet,
+            role=claim.role,
+        )
+
+    return tuple(result)
+
+
+def _value_found_in_text(value: float, text: str) -> bool:
+    """檢查 text 中是否包含 value 的近似數字。
+
+    容差規則：
+    - 絕對容差 ±0.5（涵蓋四捨五入差異）
+    - 相對容差 ±1%（涵蓋不同時間點的微小差異）
+    取兩者中較大的那個。
+    """
+    if not text:
+        return False
+
+    abs_tolerance = max(0.5, abs(value) * 0.01)
+
+    # 提取 text 中所有數字
+    numbers = re.findall(r"[-+]?\d+[,.]?\d*", text)
+    for num_str in numbers:
+        try:
+            num = float(num_str.replace(",", ""))
+        except ValueError:
+            continue
+        if abs(num - value) <= abs_tolerance:
+            return True
+
+    return False
+
+
+__all__ = [
+    "OrphanIndicator",
+    "enforce_indicator_citations",
+    "find_orphan_indicators",
+]

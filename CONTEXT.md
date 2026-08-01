@@ -140,3 +140,48 @@ _Avoid_: 缺失資料、估算窗口
 **證據不足 (Insufficient Dataset Evidence)**：
 問題超出資料集日期或要求新聞、基本面、鏈上、籌碼或情緒資訊時的明確結果。
 _Avoid_: 猜測、外部常識補完
+
+## 已知架構風險（2026-08 Bedrock 遷移後）
+
+### 範圍偷換偵測 (Scope Swap Detection) — 無專屬結構性防線
+
+**現狀**：系統沒有 deterministic 的 scope swap detection 模組。
+當題目問「A 對 B 的影響」但蒐集到的證據只涵蓋 B 本身（而非 A→B 的因果鏈），
+目前完全依賴模型自身的判斷力來辨識並揭露此落差。
+
+**已驗證的情境**：
+- 完全不相關的極端案例（證據全是 BTC 技術面，題目問美股影響）→ Claude 正確拒絕編造，明確聲明缺乏宏觀資料。
+- 部分相關的美股範圍偷換（證據有 FEDFUNDS/M2/相關性數據但無美股本身指標）→ Claude 未偷換，但這是模型自己守住的，非系統強制。
+
+**未被覆蓋的風險**：
+- 漸進式範圍窄化（證據「部分相關但範圍被悄悄縮小」）— 比「完全不相關」難偵測得多。
+  模型在此情境下可能用「宏觀環境」代替「美股本身」來回答，從結果看起來合理但實質偏離了問題。
+- 目前無 deterministic 防線攔截此類偷換。gap_rules 和 confidence penalty 只懲罰「缺少面向」，
+  不檢查「蒐集到的證據主題是否真的對應問題主題」。
+
+**維護建議**：
+- 不要因為目前測試中 Claude 沒犯此錯就假設此風險不存在。
+- 若未來觀察到報告偷換範圍的案例，應優先建立 deterministic 的 scope relevance check
+  （可能作為 claim_ledger 的擴充：驗證 conclusion 引用的 evidence 是否涵蓋問題的核心概念）。
+- 這是「依賴模型能力、缺乏結構性保障」的已知妥協，不是遺漏。
+
+### Review 層在 Bedrock 架構下被跳過
+
+**現狀**：`BedrockProvider` 不支援 `_text_generation_channel()`（它是 Gemini 專屬的 `_post()` 方法），
+因此 Layer 3 review（語氣修飾、面向矛盾解釋）自動跳過。
+
+**影響**：
+- `review_applied: False` 會被記錄在報告 metadata 中（結構化揭露）。
+- 推論軌跡明確記錄「review layer skipped: provider does not support text generation channel」。
+- Phase 2 驗證結論：Claude Sonnet 4.6 在 synthesise 階段自然處理矛盾（5 次測試穩定），
+  review 層的核心功能已被模型底層能力覆蓋。
+- 但若未來切換到推理能力較弱的模型，review 層可能需要重新啟用。
+
+### enforce_paired_disclosure 在 Bedrock 上的狀態
+
+**現狀**：deterministic function，與模型無關。interface 是 `tuple[DraftClaim, ...]`。
+已通過 unit test 驗證在 Bedrock 的 evidence ID 命名格式（BNC-SPOT-XXX-SMA60 等）下正確觸發。
+
+**注意**：Claude 的指令跟隨度較高，在目前的測試中自然引用了配對指標的雙方，
+導致此防線「未在實戰中被觸發過」。這不代表它不需要存在 — 它是最後一道
+deterministic 保障，當模型偶爾遺漏配對時才觸發。

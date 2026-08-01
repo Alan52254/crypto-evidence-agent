@@ -25,6 +25,8 @@ from hoyabit_agent.domain import (
     DraftClaim,
     Evidence,
     Facet,
+    Insufficiency,
+    InsufficientEvidence,
     Rejection,
     Report,
     ToolExecutionRecord,
@@ -53,6 +55,7 @@ from hoyabit_agent.tools import (
     assess_confidence,
     evidence_gap,
     facet_stances,
+    facets_with_evidence,
     gate_asset,
     merge_independent_evidence,
     overall_stance,
@@ -528,6 +531,10 @@ async def analyse(
 
     drafts = await model.synthesise(asset, gathered, synthesis_question)
 
+    # Track whether synthesis actually produced reasoning, or fell through to fallback.
+    # This flag determines whether the report should render as "complete" or "incomplete".
+    synthesis_succeeded = bool(drafts)
+
     # Post-synthesis review — 輕量自我審查，只修飾語氣不改結構。
     #
     # 只在供應者能做「純文字生成」時啟用。`synthesise` 不適合當審查通道：
@@ -581,6 +588,7 @@ async def analyse(
         core_data_demands=requirement.core_data_demands,
         review_applied=review_applied,
         model_used=_get_model_id(model),
+        synthesis_succeeded=synthesis_succeeded,
     )
     return AnalysisOutcome(
         run_id=identifier,
@@ -683,6 +691,7 @@ def _assemble(
     core_data_demands: tuple[object, ...] = (),
     review_applied: bool = False,
     model_used: str = "",
+    synthesis_succeeded: bool = True,
 ) -> Report:
     """組裝階段 —— 判斷先經帳本驗證，再渲染。
 
@@ -821,6 +830,23 @@ def _assemble(
         gathered, as_of=as_of, core_data_demands=_typed_demands,
     )
 
+    # ─── 推理層失敗短路 ───
+    # 當 synthesise 完全沒跑成功時，confidence 和 stance 不該被正常計算。
+    # 強制設為 InsufficientEvidence —— 讓 Report.to_markdown() 顯示
+    # 明確的「分析未完成」而非誤導性的「中性 XX%」。
+    if not synthesis_succeeded:
+        confidence = InsufficientEvidence(
+            facets_present=facets_with_evidence(gathered),
+            minimum_facets_required=2,
+            cause=Insufficiency.TOO_FEW_FACETS,
+            facet_stances=facet_stances(gathered),
+        )
+        report_limitations = list(report_limitations) if not isinstance(report_limitations, list) else report_limitations
+        report_limitations.insert(0,
+            "⚠️ 推理層未能完成（額度用罄或逾時），本報告僅呈現已蒐集的原始觀察事實，"
+            "未產出推論與結論。方向與信心度欄位不可用 — 不代表市場中性。"
+        )
+
     # ─── 爭議比例修正 ───
     # contested 判斷代表「引用有效但支撐薄弱或內部矛盾」。
     # 如果多數判斷都是 contested，信心度應該反映這個現實。
@@ -875,6 +901,7 @@ def _assemble(
         limitations=tuple(report_limitations),
         model_used=model_used,
         review_applied=review_applied,
+        synthesis_complete=synthesis_succeeded,
         analysis_window_start=window_start,
         analysis_window_end=window_end,
     )

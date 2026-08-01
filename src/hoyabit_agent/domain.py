@@ -329,11 +329,32 @@ class Report:
     報告中的語氣強度與矛盾處理完全由 synthesise 階段的模型原始輸出決定，
     未經額外審查。使用者應據此判斷報告的精修程度。
     """
+    synthesis_complete: bool = True
+    """推理層（synthesise）是否成功完成。
+
+    False 代表推理層未能產出任何推論/結論（額度用罄、逾時、格式失敗），
+    報告僅包含事實層觀察。此時方向（stance）與信心度（confidence）
+    **不可被視為有效判斷** — 它們是公式套用的殘餘值，不是推理的結果。
+    to_markdown() 會在 False 時於報告最上方顯示醒目警告。
+    """
 
     def to_markdown(self) -> str:
         """由已過濾的結構化判斷渲染 —— 不是從散文剪裁出來的。"""
         lines = [f"# {self.asset.value} 分析報告", "", f"**分析題目**：{self.question}", ""]
-        lines.append(f"**方向**：{self.stance.value}")
+
+        # ─── 推理未完成時，最上方顯示醒目警告，覆蓋正常的方向/信心度 ───
+        if not self.synthesis_complete:
+            lines.append("## ⚠️ 分析未完成")
+            lines.append("")
+            lines.append(
+                "**推理層未能完成**（額度用罄或逾時）。以下僅呈現已蒐集的原始觀察事實，"
+                "**未產出推論與結論**。"
+            )
+            lines.append("")
+            lines.append("**方向**：N/A（推理未完成，不可解讀為市場中性）")
+            lines.append("**信心度**：N/A（推理未完成）")
+        else:
+            lines.append(f"**方向**：{self.stance.value}")
 
         # 時間窗 —— 讓使用者知道這份分析涵蓋的時間範圍
         if self.analysis_window_start and self.analysis_window_end:
@@ -353,19 +374,22 @@ class Report:
             lines.append("**⚠️ 注意**：本報告未經 review 層審查（語氣修飾、面向矛盾解釋未套用）")
 
         if isinstance(self.confidence, InsufficientEvidence):
-            present = "、".join(sorted(f.value for f in self.confidence.facets_present)) or "無"
-            if self.confidence.cause is Insufficiency.NO_DIRECTIONAL_SIGNAL:
-                lines.append(
-                    f"**信心度**：無法計算 —— 蒐集到 {present} 面的證據，"
-                    f"但其中表態的不足 {self.confidence.minimum_facets_required} 面。"
-                    "當下沒有足夠的方向性訊號。"
-                )
-            else:
-                lines.append(
-                    f"**信心度**：證據不足，無法計算"
-                    f"（僅蒐集到 {present} 面，需至少 "
-                    f"{self.confidence.minimum_facets_required} 面）"
-                )
+            if self.synthesis_complete:
+                # 正常的證據不足情況（推理有跑但證據不夠）
+                present = "、".join(sorted(f.value for f in self.confidence.facets_present)) or "無"
+                if self.confidence.cause is Insufficiency.NO_DIRECTIONAL_SIGNAL:
+                    lines.append(
+                        f"**信心度**：無法計算 —— 蒐集到 {present} 面的證據，"
+                        f"但其中表態的不足 {self.confidence.minimum_facets_required} 面。"
+                        "當下沒有足夠的方向性訊號。"
+                    )
+                else:
+                    lines.append(
+                        f"**信心度**：證據不足，無法計算"
+                        f"（僅蒐集到 {present} 面，需至少 "
+                        f"{self.confidence.minimum_facets_required} 面）"
+                    )
+            # else: synthesis_complete=False 時，信心度已在上方顯示 N/A，不重複
         else:
             lines.append(f"**信心度**：{self.confidence.value:.2f}（證據面之間的一致程度）")
             lines.append(

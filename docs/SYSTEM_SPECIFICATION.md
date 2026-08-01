@@ -377,4 +377,97 @@ SSE 每 15 秒送心跳（`: heartbeat\n\n`）防止 proxy timeout。
 
 ---
 
+## 14. 產品定位與強化路線圖（TrustOps 框架 vs 現況）
+
+> 本節用途：把「Crypto TrustOps Agent」（資訊完整性 → 可信度判斷 → 應變建議）這個產品框架，對照到現有三層接縫架構上，誠實標出哪些已經是深模組、哪些只是 prompt 指令、哪些完全是缺口。**不做行銷式灌水**——凡是標「缺口」的項目，目前系統都答不出來，需要新開發才有。
+
+### 14.1 定位收斂：三層接縫本來就對應三種 Intelligence
+
+TrustOps 框架的三件事，不是新架構，是現有三接縫的重新命名 + 補強：
+
+| TrustOps 概念 | 對應接縫 | 現況 |
+|---|---|---|
+| Information Intelligence（整合成事件脈絡） | 接縫 1（資料層）+ ReAct 蒐集迴圈 | 已具備：12 源並行蒐集、`dedup.py` 同事件歸併 |
+| Trust Intelligence（判斷可信、獨立、是否互抄） | 接縫 2 的信心度公式 + `claim_ledger` | **部分具備**：獨立性/一致性有算，但「是否互抄／協同放大」沒有偵測（見 14.2） |
+| Action Intelligence（轉譯給不同對象） | `Report` → 前端渲染 | **缺口**：目前只有一種輸出（分析報告），沒有「使用者版」vs「交易所應變版」的分流 |
+
+### 14.2 提案模組 vs 現況：用深模組語言逐一核對
+
+判斷原則沿用 codebase-design 的**刪除測試**：拿掉這個模組，複雜度是消失（代表它只是包裝，不用做）還是會在別處重新冒出來（代表它真的在承擔工作，值得做成深模組）。
+
+| 提案模組 | 現況判定 | 對應的既有接縫/模組 | 刪除測試結果 |
+|---|---|---|---|
+| Query Planner | **已存在** | `model.plan()`（接縫 3）驅動的 ReAct 迴圈（`run.py` 5.1 節） | 拿掉會讓蒐集順序退化成寫死清單——複雜度會冒出來，代表現有介面是對的，不用重做 |
+| Evidence Collector | **已存在** | 接縫 1 的 12 個 MCP 工具 + `GatherContext` | 同上，已是深模組，介面（`tuple[Evidence,...]`）夠小 |
+| Source Trust Scorer | **部分存在** | `reliability.py`（`ReliabilityTier` 前綴分級）+ `tools.py:302` 獨立性計算 | 目前的「可信度」= 來源類型（交易所/媒體/社群），不是「內容是否被交叉驗證」，跟提案講的「原始性、歷史可信度」有落差 |
+| Report and Audit Agent | **已存在** | `_assemble()` + `Report` + `TraceRecorder` | 證據—主張關聯圖其實已經是 `claim_ledger` 在做（每則判斷 → evidence_id），只是沒有獨立輸出成一張圖 |
+| Contradiction Agent | **只有一半** | `tools.py:277-280`（懲罰分數，確定性）+ `review.py`（文字解釋，非確定性、可能靜默失敗） | 拿掉懲罰分數，agreement 維度會壞掉——這半是真的深模組。拿掉文字解釋，**什麼都不會壞**，因為它本來就可能沒生效——這半是空的介面，是缺口，見 14.3 |
+| Counter-Evidence Agent | **缺口（prompt-only）** | `models/prompts.py` 裡的文字要求 | 拿掉這段 prompt，行為完全不變（因為本來就沒有程式碼在檢查）——這不是模組，是一句沒人執行的指令 |
+| Sentiment Integrity Agent | **缺口** | 無 | `label()` 只回傳 [-1,1] 分數，協同操控/帳號真實性/重複內容完全沒做 |
+| Incident Risk Agent | **缺口** | 無 | 紅橙黃綠分級、最小必要干預建議，目前系統完全沒有這個輸出形狀 |
+
+**結論**：8 個提案模組裡 4 個本來就存在（只是換了名字），1 個做了一半（確定性部分在，敘述性部分是空殼），3 個是真缺口。強化報告時不該說「我們有 8 個模組」，該說「4 個既有深模組 + 1 個待補全的半成品 + 3 個明確待開發缺口」。
+
+### 14.3 缺口模組的介面草案（深模組設計，非實作）
+
+以下只是介面設計，**尚未實作**。設計時遵守「介面小、藏複雜度、放在對的接縫」：
+
+```python
+# 缺口 1：把 review.py 目前「LLM 自己決定要不要寫矛盾說明」
+# 換成確定性介面 —— 拿掉之後 agreement 懲罰分數還在，
+# 但這個介面讓分數「為什麼扣」變成可讀文字，不再依賴第二次 LLM call 成功。
+def explain_contradictions(
+    facet_stances: dict[Facet, float],
+    evidence: tuple[Evidence, ...],
+) -> tuple[str, ...]:
+    """回傳每個矛盾面向的確定性說明句（無 LLM 依賴）。"""
+
+# 缺口 2：claim_ledger 驗證通過後、_assemble 組裝前的新關卡。
+# 目前完全沒有——synthesise() 沒生出 counter_evidence/risk 角色時，
+# 報告照樣輸出，只是少了兩節。這個介面把「少了」變成明確的 Gap，
+# 讓 5.2 節的「必須」規則從 prompt 承諾變成程式碼保證。
+def enforce_counter_evidence(
+    claims: tuple[DraftClaim, ...],
+) -> tuple[DraftClaim, ...] | Gap:
+    """缺 counter_evidence 或 risk 角色時回傳 Gap，不靜默通過。"""
+
+# 缺口 3：全新能力，接在 label() 之後、confidence 計算之前。
+# 這是唯一真正回應「不能被貼文帶偏」需求的模組——
+# 現有 independence 維度只看「來源網域夠不夠多」，
+# 不看「這些網域是不是在講同一則匿名消息」。
+@dataclass(frozen=True)
+class IntegrityReport:
+    surface_sentiment: float       # 表面情緒（現有 label() 輸出）
+    source_independence: float     # 是否真的互相獨立，而非互抄同一則
+    duplication_ratio: float       # 內容重複度（同句型/同連結集中傳播）
+    timing_plausibility: bool      # 鏈上事件在前、社群討論在後，還是反過來
+
+def score_sentiment_integrity(
+    evidence: tuple[Evidence, ...],
+) -> IntegrityReport:
+    """情緒可信度與操控分析 —— 目前系統完全沒有這一層。"""
+
+# 缺口 4：新接縫，介於 Report 與呈現層之間（不動 seam 2 的核心推論）。
+# 只有一個 adapter（規則式風險矩陣）時先當作假設性接縫，
+# 等真的要接第二個 adapter（例如人工覆核佇列）時才值得正式開一個 seam。
+def classify_incident(report: Report) -> IncidentRisk:
+    """依 14.2 提案的六個評估面向（來源可信度、技術嚴重度、影響範圍、
+    市場擴散、使用者暴露、可逆性）分級，輸出建議措施與需人工核准項目。"""
+```
+
+### 14.4 評審 Prompt 對照現況準備度（誠實版，非樂觀估計）
+
+| Prompt 類型 | 對應題號 | 現況 | 理由 |
+|---|---|---|---|
+| 多源整合 / 比較分析 | 1, 3 | ✅ 準備充分 | 12 源並行 + 五維信心度，正是現有架構的核心場景 |
+| 假設驗證（正反證據） | 2 | ✅ 準備充分 | `counter_evidence`/`risk` 角色 + `enforce_paired_disclosure` 已覆蓋 |
+| 可回溯性（證據稽核、信心與限制、資料源故障） | 11, 12, 13 | ✅ 準備充分 | `claim_ledger` 逐句掛 evidence_id、`limitations.py`、`gaps.py` 都是現成的確定性機制 |
+| 資安事件（漏洞傳言、異常增發、網路中斷、脫鉤） | 4, 5, 6, 7 | 🟡 有資料、缺輸出形狀 | 蒐證能力都在，但沒有 Incident Risk Agent（14.3 缺口 4），答得出「發生了什麼」，答不出「建議暫停哪個功能」 |
+| 協同操控 / 來源衝突 | 8, 9 | 🔴 缺口 | 需要 Sentiment Integrity Agent（14.3 缺口 3），現在系統看不出「61% 來自新建帳號」這類訊號，只能比較來源分級高低 |
+| 錯誤前提測試 | 10 | 🔴 缺口 | `sanitizer.py` 只擋 prompt injection 語法，不驗證問題裡「SOL 已經停止運作」這類事實前提是否成立；目前極可能會順著錯誤前提往下分析 |
+
+**最值得優先做的一項**：Prompt 10（錯誤前提）用現有元件改造成本最低——`gate_asset` 已經是「先驗證再推論」的先例，只要在題型分類前加一個確定性的前提檢查（比對關鍵斷言是否有任何證據源支持），不需要新開一整條 pipeline。
+
+---
+
 *本文件供外部 AI 審核用。如需更深入的某一層細節，可指定章節編號要求展開。*

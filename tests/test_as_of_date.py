@@ -61,6 +61,27 @@ def test_forecast_question_gets_forecast_boundary_note() -> None:
     assert "本系統輸出當前方向研判，不做未來價格預測" in requirement.boundary_notes
 
 
+def test_asserted_premise_question_gets_verification_boundary_note() -> None:
+    """題目把未證實的負面事件當既定事實時,必須明確聲明尚待查證。
+
+    「SOL 已經停止運作」不該被系統默默接受為前提往下分析 —— 好的 Agent
+    要先標記這個斷言未經查證,而不是順著錯誤前提推論出一份煞有其事的報告。
+    """
+    requirement = derive_requirement("SOL 已經停止運作，分析一下影響", (Asset.SOL,))
+
+    assert any(
+        "尚未經查證" in note and "停止運作" in note
+        for note in requirement.boundary_notes
+    )
+
+
+def test_plain_question_has_no_verification_boundary_note() -> None:
+    """一般問句不該被誤判成帶著未證實斷言。"""
+    requirement = derive_requirement("SOL 現況如何", (Asset.SOL,))
+
+    assert not any("尚未經查證" in note for note in requirement.boundary_notes)
+
+
 def test_live_market_summary_requires_all_four_facets() -> None:
     """即時模式:市場摘要維持四面向覆蓋(既有行為不變)。"""
     requirement = derive_requirement(

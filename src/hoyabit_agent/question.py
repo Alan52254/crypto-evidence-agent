@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from hoyabit_agent.domain import AnalysisRegime, Asset, Facet
-
+from hoyabit_agent.premise import detect_asserted_premises
 
 # ─── 核心資料需求偵測 ───────────────────────────────────────────────
 #
@@ -462,6 +462,12 @@ def derive_requirement(
         # 可溯源承諾要求每句判斷掛得到來源片段;未來沒有片段可掛,
         # 因此誠實聲明邊界,而不是輸出一個沒有依據的價格預測。
         boundary_notes.append("本系統輸出當前方向研判，不做未來價格預測")
+    for premise in detect_asserted_premises(question):
+        # 題目把未證實的事件當既定事實陳述時,不默默接受這個前提往下分析 ——
+        # 先聲明它尚待查證，讓後續判斷跟這句話一起被讀者檢視。
+        boundary_notes.append(
+            f"題目斷言「{premise.claim}」尚未經查證，以下分析將此列為待驗證前提"
+        )
 
     return EvidenceRequirement(
         question_type=kind,

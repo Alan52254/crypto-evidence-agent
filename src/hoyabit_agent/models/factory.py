@@ -19,8 +19,9 @@ async def create_model_provider(client: httpx.AsyncClient) -> "ModelProvider | N
     優先級：
     1. MODEL_PROVIDER 環境變數指定的 provider
     2. 嘗試 Gemini（有 GEMINI_API_KEY 時）
-    3. 嘗試 Groq（有 GROQ_API_KEY 時）
-    4. 回傳 None（呼叫端據此降級）
+    3. 嘗試 Bedrock（有 BEDROCK_REGION 時）
+    4. 嘗試 Groq（有 GROQ_API_KEY 時）
+    5. 回傳 None（呼叫端據此降級）
     """
     preferred = os.environ.get(PROVIDER_ENV, "").strip().lower()
 
@@ -31,15 +32,26 @@ async def create_model_provider(client: httpx.AsyncClient) -> "ModelProvider | N
     gemini_provider = GeminiProvider.from_environment(client)
     groq_provider = GroqProvider.from_environment(client)
 
-    primary: ModelProvider | None
-    secondary: ModelProvider | None
+    # Bedrock provider (optional — needs boto3 + AWS credentials)
+    bedrock_provider: "ModelProvider | None" = None
+    try:
+        from hoyabit_agent.models.bedrock import BedrockProvider
+        bedrock_provider = BedrockProvider.from_environment(client)
+    except Exception:
+        pass
 
-    if preferred == "groq":
+    primary: "ModelProvider | None"
+    secondary: "ModelProvider | None"
+
+    if preferred == "bedrock" and bedrock_provider is not None:
+        primary = bedrock_provider
+        secondary = gemini_provider or groq_provider
+    elif preferred == "groq":
         primary = groq_provider
         secondary = gemini_provider
     else:
         primary = gemini_provider
-        secondary = groq_provider
+        secondary = bedrock_provider or groq_provider
 
     if primary is not None:
         return ResilientModelAdapter(primary, secondary)

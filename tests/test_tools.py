@@ -398,7 +398,7 @@ def test_repeated_tool_evidence_id_is_unique_but_keeps_distinct_excerpts() -> No
     assert len(merged[0].excerpts) == 2
 
 
-def test_apply_contested_penalty_under_threshold_returns_unchanged() -> None:
+def test_apply_contested_penalty_low_ratio_has_minimal_impact() -> None:
     conf = Confidence(
         value=0.8,
         facet_stances={},
@@ -408,14 +408,16 @@ def test_apply_contested_penalty_under_threshold_returns_unchanged() -> None:
         agreement=0.8,
         completeness=0.8,
     )
+    # 1/4 = 25% contested, penalty = 0.25² × 0.40 = 0.025
     res, info = apply_contested_penalty(
         conf, supported_count=3, contested_count=1, total_claims=4
     )
-    assert res == conf
-    assert info == {}
+    assert isinstance(res, Confidence)
+    assert res.value == round(0.8 - 0.025, 4)
+    assert info["contested_ratio"] == 0.25
 
 
-def test_apply_contested_penalty_over_50_percent_applies_deduction() -> None:
+def test_apply_contested_penalty_high_ratio_applies_strong_deduction() -> None:
     conf = Confidence(
         value=0.8,
         facet_stances={},
@@ -425,11 +427,11 @@ def test_apply_contested_penalty_over_50_percent_applies_deduction() -> None:
         agreement=0.8,
         completeness=0.8,
     )
-    # 3/4 = 75% contested > 50%, penalty = (0.75 - 0.5) * 0.3 = 0.075
+    # 3/4 = 75% contested, penalty = 0.75² × 0.40 = 0.225
     res, info = apply_contested_penalty(
         conf, supported_count=1, contested_count=3, total_claims=4
     )
     assert isinstance(res, Confidence)
-    assert res.value == round(0.8 - 0.075, 4)
-    assert info["penalty"] == 0.075
-    assert info["contested_ratio"] == 0.75
+    assert res.value == round(0.8 - 0.225, 4)
+    assert abs(info["penalty"] - 0.225) < 0.001
+    assert info["contested_ratio"] == 0.75

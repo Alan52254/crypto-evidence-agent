@@ -16,7 +16,9 @@ import io
 import json
 import logging
 import os
+import re
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -224,13 +226,52 @@ def generate_report_pdf(outcome: AnalysisOutcome) -> bytes:
     story.append(ft)
     story.append(Spacer(1, 12))
 
-    # Claims
+    # Charts (SVG figures embedded from evidence)
+    figures = [
+        fig
+        for item in report.evidence
+        for fig in (item.figures or ())
+        if fig.kind.value == "generated" and fig.data_uri
+    ]
+    if figures:
+        story.append(Paragraph("Technical Charts", styles["heading"]))
+        for fig in figures[:3]:  # 最多 3 張圖，避免 PDF 過大
+            try:
+                import base64
+                from io import BytesIO as _BytesIO
+                # data_uri = "data:image/svg+xml;base64,..."
+                b64_part = fig.data_uri.split(",", 1)[1] if "," in fig.data_uri else ""
+                svg_bytes = base64.b64decode(b64_part)
+                # 嘗試用 svglib 轉換；若不可用則跳過
+                from svglib.svglib import svg2rlg
+                drawing = svg2rlg(_BytesIO(svg_bytes))
+                if drawing:
+                    from reportlab.graphics import renderPDF
+                    # 縮放到頁面寬度
+                    scale = min(16 * cm / drawing.width, 1.0)
+                    drawing.width *= scale
+                    drawing.height *= scale
+                    drawing.scale(scale, scale)
+                    story.append(drawing)
+                    if fig.caption:
+                        story.append(Paragraph(
+                            f"<i>{_escape(fig.caption)}</i>", styles["meta"]))
+                    story.append(Spacer(1, 8))
+            except Exception:
+                # svglib 不可用或 SVG 解析失敗 — 只顯示 caption
+                if fig.caption:
+                    story.append(Paragraph(
+                        f"[Chart: {_escape(fig.caption)}]", styles["meta"]))
+        story.append(Spacer(1, 12))
+
+    # Claims — claim.text 常內嵌 Markdown 表格，用 _render_claim_flowables
+    # 拆成 bullet 段落 + 真的 Table，而不是整段當純文字塞進一個 Paragraph。
     story.append(Paragraph("Claims (Evidence-backed)", styles["heading"]))
     for claim in report.claims:
-        citations = ", ".join(claim.evidence_ids)
-        story.append(Paragraph(
-            f"&bull; {_escape(claim.text)} [{_escape(citations)}]", styles["bullet"]))
-    story.append(Spacer(1, 12))
+        story.extend(_render_claim_flowables(
+            claim.text, claim.evidence_ids, styles, font_name))
+        story.append(Spacer(1, 8))
+    story.append(Spacer(1, 4))
 
     # Limitations
     if report.limitations:
@@ -558,6 +599,121 @@ def _truncate(text: str, max_len: int = 80) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len - 3] + "..."
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Claim text 裡的 Markdown 表格 —— 對應 chat-thread.tsx 的 markdownToHtml
+# ═══════════════════════════════════════════════════════════════════
+#
+# claim.text 常常內嵌 5-7 日簡表（近期指標時序）。PDF 之前直接把整段
+# claim.text 一起 _escape() 塞進單一 Paragraph，表格語法完全沒被解析，
+# 管線符號原封不動印出來——跟 chat-thread.tsx 修過的那個 bug是同一類，
+# 只是這邊還沒修。前端跟這裡是兩個不同的執行環境（瀏覽器 JS vs
+# ReportLab），程式碼沒辦法真的共用，但「判斷規則」刻意保持一致：
+# 一列是不是「標題列」只看它的下一行是不是 |---|---| 分隔線，跟內容
+# 本身無關（跟 markdownToHtml 的判斷邏輯對稱）。
+
+_TABLE_ROW_PATTERN = re.compile(r"^\|(.+)\|$")
+_SEPARATOR_CELL_PATTERN = re.compile(r"^[-:]+$")
+
+
+@dataclass(frozen=True)
+class _ParsedTableRow:
+    cells: tuple[str, ...]
+    is_header: bool
+
+
+def _is_table_row(line: str) -> bool:
+    return bool(_TABLE_ROW_PATTERN.match(line.strip()))
+
+
+def _split_row_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    return [c.strip() for c in stripped[1:-1].split("|")]
+
+
+def _is_separator_row(cells: list[str]) -> bool:
+    return bool(cells) and all(_SEPARATOR_CELL_PATTERN.match(c) for c in cells)
+
+
+def _extract_markdown_segments(text: str) -> list[str | list[_ParsedTableRow]]:
+    """把 claim.text 依行走訪，拆成「純文字段落」與「表格 rows」，保留原始順序。"""
+    lines = text.split("\n")
+    segments: list[str | list[_ParsedTableRow]] = []
+    prose_buffer: list[str] = []
+    table_buffer: list[_ParsedTableRow] = []
+
+    def flush_prose() -> None:
+        joined = "\n".join(prose_buffer).strip()
+        if joined:
+            segments.append(joined)
+        prose_buffer.clear()
+
+    def flush_table() -> None:
+        if table_buffer:
+            segments.append(list(table_buffer))
+            table_buffer.clear()
+
+    for i, line in enumerate(lines):
+        if not _is_table_row(line):
+            flush_table()
+            prose_buffer.append(line)
+            continue
+
+        cells = _split_row_cells(line)
+        if _is_separator_row(cells):
+            continue  # 分隔線本身不帶內容，只用來判斷上一列是不是標題列
+
+        flush_prose()
+        next_line = lines[i + 1] if i + 1 < len(lines) else ""
+        is_header = _is_table_row(next_line) and _is_separator_row(
+            _split_row_cells(next_line)
+        )
+        table_buffer.append(_ParsedTableRow(cells=tuple(cells), is_header=is_header))
+
+    flush_table()
+    flush_prose()
+    return segments
+
+
+def _build_table_flowable(rows: list[_ParsedTableRow], font_name: str) -> Table:
+    data = [list(r.cells) for r in rows]
+    t = Table(data, hAlign="LEFT", repeatRows=1 if rows and rows[0].is_header else 0)
+    style_commands: list[tuple[Any, ...]] = [
+        ("FONTNAME", (0, 0), (-1, -1), font_name),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e0e0e0")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]
+    for idx, row in enumerate(rows):
+        if row.is_header:
+            style_commands.append(
+                ("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#f5f5f5"))
+            )
+    t.setStyle(TableStyle(style_commands))
+    return t
+
+
+def _render_claim_flowables(
+    text: str, evidence_ids: tuple[str, ...], styles: dict[str, ParagraphStyle], font_name: str
+) -> list[Any]:
+    """把一則 claim 轉成一串 flowables —— 表格段落畫成真的 Table，其餘畫成 bullet paragraph。"""
+    segments = _extract_markdown_segments(text)
+    flowables: list[Any] = []
+    for i, seg in enumerate(segments):
+        if isinstance(seg, str):
+            prefix = "&bull; " if i == 0 else ""
+            flowables.append(Paragraph(f"{prefix}{_escape(seg)}", styles["bullet"]))
+        else:
+            flowables.append(_build_table_flowable(seg, font_name))
+            flowables.append(Spacer(1, 6))
+    if not flowables:
+        flowables.append(Paragraph("&bull; (empty)", styles["bullet"]))
+    citations = ", ".join(evidence_ids)
+    flowables.append(Paragraph(f"<i>[{_escape(citations)}]</i>", styles["mono"]))
+    return flowables
 
 
 __all__ = [

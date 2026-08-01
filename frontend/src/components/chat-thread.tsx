@@ -185,7 +185,7 @@ export function ChatThread({
 
   return (
     <div className="chat-scroll flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 pb-44 md:px-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 pb-44 md:px-8">
         {!hasContent && <WelcomeState asset={asset} onSelectPrompt={onSelectPrompt} />}
 
         {hasContent && (
@@ -588,7 +588,7 @@ function ReportResponse({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden">
       {/* Header metrics & Action Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/60 pb-3">
         <div className="flex flex-wrap items-center gap-3">

@@ -328,6 +328,7 @@ async def analyse(
 
     assessment = gap_rules.assess(gathered, requirement)
     used_fallback_plan = False
+    _consecutive_empty_rounds = 0  # 連續幾輪無新證據 → 達到 2 輪強制停止
     for _ in range(max_iterations):
         gap = evidence_gap(gathered, now=as_of_ref)
         assessment = gap_rules.assess(gathered, requirement)
@@ -471,6 +472,13 @@ async def analyse(
                     ToolAttempt(invocation.tool, invocation.arguments, "unavailable")
                 )
                 continue
+            if not result:
+                # 工具呼叫成功但回傳零項證據 — 不標記 unavailable（可能只是該時段沒資料），
+                # 但在 trace 中如實反映「succeeded 但沒有新證據落地」。
+                fresh_attempts.append(
+                    ToolAttempt(invocation.tool, invocation.arguments, "0 項證據（空回傳）")
+                )
+                continue
             fresh.extend(result)
             fresh_attempts.append(
                 ToolAttempt(invocation.tool, invocation.arguments, f"{len(result)} 項證據")
@@ -481,14 +489,34 @@ async def analyse(
                 inv.tool,
                 gate_asset(str(inv.arguments.get("asset", asset.value))) or asset,
                 dict(inv.arguments),
-                ToolExecutionStatus.UNAVAILABLE if res is None else ToolExecutionStatus.SUCCEEDED,
-                "unavailable" if res is None else f"{len(res)} 項證據",
+                ToolExecutionStatus.UNAVAILABLE if res is None
+                else ToolExecutionStatus.SUCCEEDED,
+                "unavailable" if res is None
+                else f"{len(res)} 項證據" if res
+                else "0 項證據（空回傳）",
                 tuple(item.id for item in res) if res else (),
             )
             for inv, res in zip(valid_invocations, results, strict=True)
         )
         attempts = attempts + tuple(fresh_attempts)
         gathered = merge_independent_evidence([*gathered, *fresh])
+
+        # ─── 遞減收益偵測 ───
+        # 如果連續 2 輪蒐集都沒有新證據落地，強制跳出迴圈。
+        # 這防止模型在同一個無資料的 facet 上反覆嘗試、燒光 6 輪 PLAN。
+        if len(fresh) == 0:
+            _consecutive_empty_rounds += 1
+            if _consecutive_empty_rounds >= 2:
+                recorder.record(
+                    TraceNodeKind.BUDGET_EXHAUSTED,
+                    f"連續 {_consecutive_empty_rounds} 輪無新證據落地（資料源已窮盡），"
+                    "停止蒐集迴圈，以現有證據組裝報告。",
+                    gap_before=gap.missing_facets,
+                    gap_after=gap.missing_facets,
+                )
+                break
+        else:
+            _consecutive_empty_rounds = 0  # 有新證據，重置計數器
         gap_after = evidence_gap(gathered, now=as_of_ref)
         called = ", ".join(inv.tool for inv in valid_invocations)
         recorder.record(

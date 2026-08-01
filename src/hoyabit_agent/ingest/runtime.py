@@ -7,9 +7,12 @@ import httpx
 from hoyabit_agent.ingest.embeddings import GeminiEmbedder
 from hoyabit_agent.ingest.historical import MarketDatasetEvidenceSource
 from hoyabit_agent.ingest.postgres_store import PostgresMarketDocumentStore
+from hoyabit_agent.models.vision import VisionModelAdapter
 from hoyabit_agent.seams import EvidenceSource, ModelProvider
 from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
+from hoyabit_agent.sources.chart_reader import ChartReaderSource
 from hoyabit_agent.sources.news import NewsRssSource
+from hoyabit_agent.sources.web_chart_capture import WebChartCaptureSource
 from hoyabit_agent.storage.postgres import reachable
 
 
@@ -66,6 +69,29 @@ async def build_competition_sources(
         sources.append(historical)
     else:
         sources.append(CsvHistoricalSource())
+
+    # Vision 工具（需要 VisionModelAdapter；無 API key 時不註冊）
+    vision_adapter = VisionModelAdapter.from_environment(client)
+    if vision_adapter is not None:
+        sources.append(ChartReaderSource(client, vision_adapter))
+        sources.append(WebChartCaptureSource(client, vision_adapter))
+
+    # Athena 歷史資料倉儲（S3 + Glue + Athena）—— 有 AWS 認證時自動啟用
+    try:
+        from hoyabit_agent.sources.athena import AthenaEvidenceSource
+
+        sources.append(AthenaEvidenceSource())
+    except Exception:
+        pass  # 沒有 boto3 或 AWS 認證時靜默跳過
+
+    # Kinesis 即時串流（Binance WS → Kinesis → Evidence）—— 有 AWS 認證時自動啟用
+    try:
+        from hoyabit_agent.sources.kinesis_stream import KinesisEvidenceSource
+
+        sources.append(KinesisEvidenceSource())
+    except Exception:
+        pass  # 沒有 boto3 或 AWS 認證時靜默跳過
+
     return sources
 
 

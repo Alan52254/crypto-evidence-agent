@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 const nextConfig = {
   devIndicators: false,
   outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
-  // 延長 serverless function timeout（分析回合最多 15 分鐘）
+  // 延長 serverless function timeout（分析回合最多 15 分鐘，與 route.ts 的 maxDuration=900 一致）
   serverExternalPackages: [],
   experimental: {
-    proxyTimeout: 900000, // 15 分鐘 SSE proxy timeout
+    proxyTimeout: 900_000, // 15 分鐘 SSE proxy timeout
   },
 };
 

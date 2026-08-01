@@ -173,19 +173,24 @@ def macd(
     if len(closes) < slow + signal:
         return None
 
-    # 計算完整的 DIF 序列
+    # 計算完整的 EMA 序列
     fast_mult = 2.0 / (fast + 1)
     slow_mult = 2.0 / (slow + 1)
 
+    # 初始化：用前 N 根的 SMA 作為 EMA 種子
     fast_ema = sum(closes[:fast]) / fast
     slow_ema = sum(closes[:slow]) / slow
 
+    # fast EMA 暖機：從 index=fast 到 index=slow-1 逐步更新 fast_ema，
+    # 但此區間 slow_ema 尚未開始（因為 slow SMA 種子用了前 slow 根）。
+    # 這段修正了原本 fast_ema 在 14 步內完全未更新的 bug。
+    for i in range(fast, slow):
+        fast_ema = (closes[i] - fast_ema) * fast_mult + fast_ema
+
+    # 從 index=slow 開始，兩條 EMA 都在更新，開始記錄 DIF 序列
     dif_series: list[float] = []
     for i in range(slow, len(closes)):
-        # 更新 fast EMA
-        if i >= fast:
-            fast_ema = (closes[i] - fast_ema) * fast_mult + fast_ema
-        # 更新 slow EMA
+        fast_ema = (closes[i] - fast_ema) * fast_mult + fast_ema
         slow_ema = (closes[i] - slow_ema) * slow_mult + slow_ema
         dif_series.append(fast_ema - slow_ema)
 

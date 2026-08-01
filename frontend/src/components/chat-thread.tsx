@@ -40,6 +40,28 @@ interface ChatThreadProps {
 
 /* ─────────────────────── Helpers ─────────────────────── */
 
+// 共用的 markdown 渲染樣式 —— claim 卡片跟展開的完整報告都會用到。
+// 抽成常數是因為兩處都要吃到同一組 table-scroll 規則：claim.text 現在
+// 常常內嵌 Markdown 表格（近 5-7 日簡表），先前只有 enhanced_report_md
+// 那邊套用 markdownToHtml，claim.text 是直接塞進 <p> 的原始字串——
+// 表格語法完全沒被解析，管線符號原封不動印出來，是真正的跑版來源。
+const MARKDOWN_PROSE_CLASSES = `prose prose-sm max-w-none text-inherit leading-relaxed
+  [&_h1]:text-headline-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-6 [&_h1]:mb-3
+  [&_h2]:text-headline-md [&_h2]:font-bold [&_h2]:text-primary [&_h2]:mt-5 [&_h2]:mb-2
+  [&_h3]:text-body-lg [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-4 [&_h3]:mb-1
+  [&_.table-scroll]:overflow-x-auto [&_.table-scroll]:max-w-full [&_.table-scroll]:-mx-1 [&_.table-scroll]:px-1
+  [&_table]:w-full [&_table]:min-w-[420px] [&_table]:text-[12px] [&_table]:border-collapse
+  [&_th]:border [&_th]:border-outline-variant [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold
+  [&_td]:border [&_td]:border-outline-variant [&_td]:px-3 [&_td]:py-1.5
+  [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1
+  [&_li]:text-body-md
+  [&_strong]:text-primary [&_strong]:font-semibold
+  [&_code]:bg-surface-container-low [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px] [&_code]:font-mono
+  [&_blockquote]:border-l-4 [&_blockquote]:border-l-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-secondary
+  [&_hr]:border-outline-variant [&_hr]:my-4
+  [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3
+  [&_p]:text-body-md [&_p]:leading-relaxed [&_p]:my-2`;
+
 function markdownToHtml(md: string): string {
   // Simple markdown to HTML converter (no external deps)
   let html = md
@@ -126,7 +148,7 @@ export function ChatThread({
 
   return (
     <div className="chat-scroll flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 pb-44 md:px-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 pb-44 md:px-6">
         {!hasContent && <WelcomeState asset={asset} onSelectPrompt={onSelectPrompt} />}
 
         {hasContent && (
@@ -626,9 +648,10 @@ function ReportResponse({
                   {claim.facet}
                 </span>
               </div>
-              <p className="text-body-md leading-relaxed text-primary font-medium">
-                {claim.text}
-              </p>
+              <div
+                className={`${MARKDOWN_PROSE_CLASSES} font-medium text-primary [&_p]:my-0`}
+                dangerouslySetInnerHTML={{ __html: markdownToHtml(claim.text) }}
+              />
               <div className="mt-2.5 flex items-end justify-between">
                 <div className="flex flex-wrap gap-1.5">
                   {claim.evidence_ids.map((id) => {
@@ -676,22 +699,7 @@ function ReportResponse({
             📊 展開完整增強報告（含圖表 + 投資者洞察 + 風險分析）
           </summary>
           <div
-            className="mt-3 prose prose-sm max-w-none text-on-surface-variant leading-relaxed 
-              [&_h1]:text-headline-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-6 [&_h1]:mb-3
-              [&_h2]:text-headline-md [&_h2]:font-bold [&_h2]:text-primary [&_h2]:mt-5 [&_h2]:mb-2
-              [&_h3]:text-body-lg [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-4 [&_h3]:mb-1
-              [&_.table-scroll]:overflow-x-auto [&_.table-scroll]:max-w-full [&_.table-scroll]:-mx-1 [&_.table-scroll]:px-1
-              [&_table]:w-full [&_table]:min-w-[420px] [&_table]:text-[12px] [&_table]:border-collapse
-              [&_th]:border [&_th]:border-outline-variant [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold
-              [&_td]:border [&_td]:border-outline-variant [&_td]:px-3 [&_td]:py-1.5
-              [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1
-              [&_li]:text-body-md
-              [&_strong]:text-primary [&_strong]:font-semibold
-              [&_code]:bg-surface-container-low [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[11px] [&_code]:font-mono
-              [&_blockquote]:border-l-4 [&_blockquote]:border-l-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-secondary
-              [&_hr]:border-outline-variant [&_hr]:my-4
-              [&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-3
-              [&_p]:text-body-md [&_p]:leading-relaxed [&_p]:my-2"
+            className={`mt-3 ${MARKDOWN_PROSE_CLASSES} text-on-surface-variant`}
             dangerouslySetInnerHTML={{ __html: markdownToHtml(report.enhanced_report_md) }}
           />
           <div className="mt-4 flex justify-end border-t border-outline-variant pt-3">

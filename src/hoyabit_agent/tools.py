@@ -178,21 +178,23 @@ def evidence_gap(
 def facet_stance(evidence: Iterable[Evidence]) -> Stance:
     """單一證據面的方向傾向。每個面必須能獨立產出傾向 —— 這是信心度的前提。
 
-    特殊處理：sentiment 面的方向由**市場情緒指標**（如 FGI）主導，
-    而非新聞文本語氣（NEWS-SENT）。原因：正面新聞（如升級公告）
-    可以在恐懼市場中被報導，兩者不矛盾但不該被平均成一個方向。
-    新聞語氣正面 ≠ 市場情緒正面。
+    特殊處理：
+    1. sentiment 面的方向由**市場情緒指標**（如 FGI）主導，
+       而非新聞文本語氣（NEWS-SENT）。原因：正面新聞可以在恐懼市場中被報導，
+       兩者不矛盾但不該被平均成一個方向。
 
-    NEWS-SENT 項仍保留在 sentiment 面（用於覆蓋率、引用、呈現），
+    2. positioning 面的方向由**衍生品結構性指標**（OI、資金費率）主導，
+       而非現貨盤口快照（BOOK、SPREAD）。原因：盤口掛單反映的是短期流動性意願，
+       不代表趨勢方向；且掛單可在毫秒內撤除，不適合作為方向投票依據。
+
+    NEWS-SENT 和 BOOK/SPREAD 項仍保留在各自的 facet 中（用於覆蓋率、引用、呈現），
     但不參與方向投票。
     """
     items = list(evidence)
     if not items:
         return Stance.NEUTRAL
 
-    # 區分「市場情緒指標」與「新聞語氣」
-    # 市場情緒指標：FGI-*, 或其他非新聞來源的 sentiment evidence
-    # 新聞語氣：NEWS-SENT-*, XNEWS-SENT-*
+    # ─── Sentiment 面：市場情緒指標主導，新聞語氣不投票 ───
     market_sentiment_hints = []
     news_tone_hints = []
 
@@ -202,14 +204,39 @@ def facet_stance(evidence: Iterable[Evidence]) -> Stance:
         else:
             market_sentiment_hints.append(item.stance_hint)
 
-    # 方向判定優先用市場情緒指標；若沒有市場指標才退回全體平均
-    if market_sentiment_hints:
-        hints = market_sentiment_hints
-    else:
-        # 沒有 FGI 等市場指標時，才用新聞語氣作為 fallback
-        hints = [item.stance_hint for item in items]
+    # ─── Positioning 面：衍生品指標主導，盤口快照不投票 ───
+    derivatives_hints = []
+    orderbook_hints = []
 
-    mean = sum(hints) / len(hints)
+    for item in items:
+        if item.id.endswith("-BOOK") or item.id.endswith("-SPREAD"):
+            orderbook_hints.append(item.stance_hint)
+        else:
+            derivatives_hints.append(item.stance_hint)
+
+    # 判斷使用哪組 hints：
+    # - 如果有 market_sentiment（非 NEWS-SENT）的 hints → 用它們（sentiment 邏輯）
+    # - 如果有 derivatives（非 BOOK/SPREAD）的 hints → 用它們（positioning 邏輯）
+    # - 兩者的判斷是互斥的（同一批 evidence 只可能屬於一個 facet），
+    #   所以我們簡單地：排除不該投票的項，用剩下的算平均
+    voting_hints = []
+    for item in items:
+        # 排除 NEWS-SENT（sentiment 面不投票）
+        if item.id.startswith("NEWS-SENT-") or item.id.startswith("XNEWS-SENT-"):
+            continue
+        # 排除盤口快照（positioning 面不投票）
+        if item.id.endswith("-BOOK") or item.id.endswith("-SPREAD"):
+            continue
+        voting_hints.append(item.stance_hint)
+
+    # 如果排除後沒有任何 voting hints，fallback 到全體
+    if not voting_hints:
+        voting_hints = [item.stance_hint for item in items]
+
+    if not voting_hints:
+        return Stance.NEUTRAL
+
+    mean = sum(voting_hints) / len(voting_hints)
     if mean > STANCE_THRESHOLD:
         return Stance.BULLISH
     if mean < -STANCE_THRESHOLD:

@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 const nextConfig = {
   devIndicators: false,
   outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
+  serverExternalPackages: [],
+  experimental: {
+    proxyTimeout: 600_000, // 10 minutes for SSE streams
+  },
 };
 
 export default nextConfig;

@@ -142,6 +142,7 @@ export function IntelligenceWorkspace() {
 
       source.addEventListener("complete", (message) => {
         const completedReport = JSON.parse((message as MessageEvent).data) as AnalysisReport;
+        reportRef.current = completedReport;
         setReport(completedReport);
         setRunning(false);
         source.close();
@@ -149,6 +150,11 @@ export function IntelligenceWorkspace() {
 
       // Handle SSE "error" event type from backend (agent failure)
       source.addEventListener("error", (message) => {
+        // If we already have a report, this is just the stream closing after complete
+        if (reportRef.current) {
+          source.close();
+          return;
+        }
         try {
           const errorData = JSON.parse((message as MessageEvent).data);
           setError(`Agent 錯誤：${errorData?.error ?? "未知錯誤"}`);
@@ -161,7 +167,7 @@ export function IntelligenceWorkspace() {
 
       // Handle native connection errors with reconnect
       let reconnectAttempts = 0;
-      const maxReconnects = 3;
+      const maxReconnects = 10;
       source.onerror = () => {
         if (source.readyState === EventSource.CLOSED || reportRef.current) return;
         reconnectAttempts++;

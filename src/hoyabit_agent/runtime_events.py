@@ -61,7 +61,12 @@ class RuntimeEventBroker:
         channel.subscribers.add(queue)
         try:
             while True:
-                event, payload = await queue.get()
+                try:
+                    event, payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except TimeoutError:
+                    # SSE keepalive — 防止瀏覽器/proxy 判定連線死亡
+                    yield ": keepalive\n\n"
+                    continue
                 yield _sse(event, payload)
                 if event in {"complete", "error"}:
                     return

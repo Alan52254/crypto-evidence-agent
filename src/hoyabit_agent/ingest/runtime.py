@@ -54,11 +54,35 @@ async def build_competition_sources(
     if historical is not None:
         sources.append(historical)
 
+    # CSV 直讀版 fallback（當 pgvector 不可用時）
+    try:
+        from hoyabit_agent.sources.csv_historical import CsvHistoricalSource
+        if historical is None:
+            sources.append(CsvHistoricalSource())
+    except Exception:
+        pass
+
     # Vision 工具（需要 VisionModelAdapter；無 API key 時不註冊）
     vision_adapter = VisionModelAdapter.from_environment(client)
     if vision_adapter is not None:
         sources.append(ChartReaderSource(client, vision_adapter))
         sources.append(WebChartCaptureSource(client, vision_adapter))
+
+    # Athena 歷史資料倉儲（S3 + Glue + Athena）—— 有 AWS 認證時自動啟用
+    try:
+        from hoyabit_agent.sources.athena import AthenaEvidenceSource
+        athena_source = AthenaEvidenceSource()
+        sources.append(athena_source)
+    except Exception:
+        pass  # 沒有 boto3 或 AWS 認證時靜默跳過
+
+    # Kinesis 即時串流（Binance WS → Kinesis → Evidence）—— 有 AWS 認證時自動啟用
+    try:
+        from hoyabit_agent.sources.kinesis_stream import KinesisEvidenceSource
+        kinesis_source = KinesisEvidenceSource()
+        sources.append(kinesis_source)
+    except Exception:
+        pass  # 沒有 boto3 或 AWS 認證時靜默跳過
 
     return sources
 

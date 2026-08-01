@@ -51,7 +51,7 @@ def build_export_zip(outcome: AnalysisOutcome, session_id: str | None = None) ->
 def export_filename(session_id: str | None = None) -> str:
     """產出 ZIP 檔案名稱。"""
     identifier = session_id or datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    return f"HoyaBit_Analysis_{identifier}.zip"
+    return f"AlphaSonar_Analysis_{identifier}.zip"
 
 
 # ─── Internal Builders ───
@@ -100,7 +100,7 @@ def _fallback_pdf(title: str, outcome: AnalysisOutcome) -> bytes:
         c = canvas.Canvas(buffer, pagesize=A4)
         c.setFont("Helvetica-Bold", 14)
         y = A4[1] - 50
-        c.drawString(50, y, f"HoyaBit - {title}")
+        c.drawString(50, y, f"AlphaSonar - {title}")
         y -= 30
         c.setFont("Helvetica", 10)
         c.drawString(50, y, f"Run ID: {outcome.run_id}")

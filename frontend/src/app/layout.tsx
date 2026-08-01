@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Alpha Intel AI — HOYA BIT",
+  title: "AlphaSonar AI — HOYA BIT",
   description:
     "AI-powered crypto market intelligence terminal. Auditable evidence-based analysis with real-time ReAct agent tracing.",
 };

@@ -2,7 +2,7 @@
 
 提供高吞吐量、低延遲的即時行情與新聞串流寫入能力。
 將 Binance WebSocket 價格數據與新聞事件推送至 AWS Kinesis/Firehose，
-作為 HoyaBit ReAct Agent 的即時數據入口。
+作為 AlphaSonar ReAct Agent 的即時數據入口。
 
 穩健性保證：
 - 遇到 ProvisionedThroughputExceededException 時指數退避重試

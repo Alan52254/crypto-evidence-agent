@@ -21,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
     // Stream the ZIP binary response
     const zipBuffer = await upstream.arrayBuffer();
     const contentDisposition = upstream.headers.get("Content-Disposition")
-      ?? 'attachment; filename="HoyaBit_Analysis.zip"';
+      ?? 'attachment; filename="AlphaSonar_Analysis.zip"';
 
     return new Response(zipBuffer, {
       status: 200,

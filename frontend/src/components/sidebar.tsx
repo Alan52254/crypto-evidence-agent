@@ -73,7 +73,7 @@ export function Sidebar({
           </div>
           <div className="min-w-0">
             <h1 className="text-[15px] font-bold leading-tight text-primary">
-              Alpha Intel
+              AlphaSonar
             </h1>
             <p className="text-[10px] text-secondary font-medium">HOYA BIT Research</p>
           </div>

@@ -207,7 +207,7 @@ export function TopBar({ onMenuToggle, remaining, running, onExport, onThemeTogg
 
           {/* Mobile brand */}
           <span className="text-headline-md font-bold text-primary md:hidden">
-            Alpha Intel AI
+            AlphaSonar AI
           </span>
 
           {/* Desktop Market Tickers — Marquee */}

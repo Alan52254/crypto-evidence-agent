@@ -35,7 +35,7 @@ export function ExportZipButton({ runId, sessionId }: ExportZipButtonProps) {
       // Extract filename from Content-Disposition header
       const disposition = response.headers.get("Content-Disposition") ?? "";
       const filenameMatch = disposition.match(/filename="?([^";\n]+)"?/);
-      const filename = filenameMatch?.[1] ?? `HoyaBit_Analysis_${runId.slice(0, 8)}.zip`;
+      const filename = filenameMatch?.[1] ?? `AlphaSonar_Analysis_${runId.slice(0, 8)}.zip`;
 
       // Trigger download
       const blob = await response.blob();

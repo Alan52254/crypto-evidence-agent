@@ -235,18 +235,21 @@ def generate_report_pdf(outcome: AnalysisOutcome) -> bytes:
     ]
     if figures:
         story.append(Paragraph("Technical Charts", styles["heading"]))
-        for fig in figures[:3]:  # 最多 3 張圖，避免 PDF 過大
+        for fig in figures[:6]:  # 最多 6 張圖（比較題兩幣各3張）
             try:
                 import base64
-                from io import BytesIO as _BytesIO
+                import tempfile
                 # data_uri = "data:image/svg+xml;base64,..."
                 b64_part = fig.data_uri.split(",", 1)[1] if "," in fig.data_uri else ""
                 svg_bytes = base64.b64decode(b64_part)
-                # 嘗試用 svglib 轉換；若不可用則跳過
+                # svglib 需要檔案路徑，不支援 BytesIO
+                with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as tmp:
+                    tmp.write(svg_bytes)
+                    tmp_path = tmp.name
                 from svglib.svglib import svg2rlg
-                drawing = svg2rlg(_BytesIO(svg_bytes))
+                drawing = svg2rlg(tmp_path)
+                os.unlink(tmp_path)  # 清理暫存檔
                 if drawing:
-                    from reportlab.graphics import renderPDF
                     # 縮放到頁面寬度
                     scale = min(16 * cm / drawing.width, 1.0)
                     drawing.width *= scale
@@ -257,7 +260,8 @@ def generate_report_pdf(outcome: AnalysisOutcome) -> bytes:
                         story.append(Paragraph(
                             f"<i>{_escape(fig.caption)}</i>", styles["meta"]))
                     story.append(Spacer(1, 8))
-            except Exception:
+            except Exception as exc:
+                logger.warning("[PDF] SVG embed failed: %s", exc)
                 # svglib 不可用或 SVG 解析失敗 — 只顯示 caption
                 if fig.caption:
                     story.append(Paragraph(

@@ -96,6 +96,11 @@ CHART_REGISTRY: dict[str, ChartSource] = {
         facet=Facet.FUNDAMENTAL,
     ),
     # 鏈上/交易所
+    #
+    # 這個清單原本只有 BTC(7)/ETH(2)/宏觀/DeFi，SOL/BNB/XRP 完全沒有專屬圖表；
+    # 逐一用 curl 實測 URL 存活狀態時，也發現原本的 BTC 清單裡有好幾個網址
+    # 早就死了（coinglass.com 改版），"chart_id 存在" 不代表截圖時真的
+    # 截得到東西——已一併修正，而不是只補新幣種、放著舊的死連結不管。
     "btc_exchange_reserve": ChartSource(
         url="https://www.coinglass.com/Balance",
         selector=".chart-container",
@@ -103,31 +108,36 @@ CHART_REGISTRY: dict[str, ChartSource] = {
         facet=Facet.POSITIONING,
     ),
     "btc_whale_addresses_1k": ChartSource(
-        url="https://www.coinglass.com/whale",
+        # 原網址 /whale 已 404（coinglass 站內改版），換成仍存活的 /whale-alert。
+        url="https://www.coinglass.com/whale-alert",
         selector=".chart-container",
         description="Bitcoin Whale Addresses (1,000+ BTC) — 持有千枚以上 BTC 的巨鯨地址數量與餘額變化",
         facet=Facet.POSITIONING,
     ),
     "btc_exchange_netflow": ChartSource(
-        url="https://www.coinglass.com/flow",
+        # 原網址 /flow 已 404，且找不到 coinglass 上專門的淨流入頁面
+        # （查過 /exchange-flow /exchange-net-flow /pro/i/BtcExchangeFlows 皆 404），
+        # 暫時併到 /whale-alert（同頁面涵蓋交易所資金流向數據）。
+        url="https://www.coinglass.com/whale-alert",
         selector=".chart-container",
         description="BTC Exchange Netflow — 交易所比特幣淨流入/流出（正值=流入=潛在賣壓，負值=流出=累積）",
         facet=Facet.POSITIONING,
     ),
     "btc_whale_ratio": ChartSource(
-        url="https://www.coinglass.com/whale",
+        url="https://www.coinglass.com/whale-alert",  # 同上，原 /whale 已 404
         selector=".whale-ratio-chart",
         description="Exchange Whale Ratio — 交易所入金中巨鯨佔比（高值=巨鯨主導交易所流入=潛在拋壓）",
         facet=Facet.POSITIONING,
     ),
     "btc_etf_flow": ChartSource(
-        url="https://www.coinglass.com/bitcoin-etf",
+        url="https://www.coinglass.com/etf/bitcoin",
         selector=".etf-chart",
         description="BTC ETF Flow（BTC ETF 資金流向）",
         facet=Facet.POSITIONING,
     ),
     "eth_etf_flow": ChartSource(
-        url="https://www.coinglass.com/ethereum-etf",
+        # 原網址 /ethereum-etf 已 404，改用實測存活的 /etf/ethereum。
+        url="https://www.coinglass.com/etf/ethereum",
         selector=".etf-chart",
         description="ETH ETF Flow（ETH ETF 資金流向）",
         facet=Facet.POSITIONING,
@@ -140,9 +150,51 @@ CHART_REGISTRY: dict[str, ChartSource] = {
         facet=Facet.POSITIONING,
     ),
     "btc_open_interest": ChartSource(
-        url="https://www.coinglass.com/BitcoinOpenInterest",
+        url="https://www.coinglass.com/open-interest/BTC",
         selector=".oi-chart",
         description="BTC Open Interest（BTC 未平倉合約）",
+        facet=Facet.POSITIONING,
+    ),
+    # SOL/BNB/XRP 的未平倉合約——coinglass 的 /open-interest/{SYMBOL} 是
+    # 對稱的分幣種路徑，逐一 curl 驗證過三個都存活（不像 whale 系列，
+    # 這三家沒有需要另外拼湊的舊網址問題）。
+    "sol_open_interest": ChartSource(
+        url="https://www.coinglass.com/open-interest/SOL",
+        selector=".oi-chart",
+        description="SOL Open Interest（SOL 未平倉合約）",
+        facet=Facet.POSITIONING,
+    ),
+    "bnb_open_interest": ChartSource(
+        url="https://www.coinglass.com/open-interest/BNB",
+        selector=".oi-chart",
+        description="BNB Open Interest（BNB 未平倉合約）",
+        facet=Facet.POSITIONING,
+    ),
+    "xrp_open_interest": ChartSource(
+        url="https://www.coinglass.com/open-interest/XRP",
+        selector=".oi-chart",
+        description="XRP Open Interest（XRP 未平倉合約）",
+        facet=Facet.POSITIONING,
+    ),
+    # SOL/BNB/XRP 的綜合籌碼面總覽頁（資金費率、多空比、OI 等同頁呈現）——
+    # coinglass 的 /currencies/{SYMBOL} 同樣是驗證過存活的對稱路徑，
+    # 給這三個幣種至少一個涵蓋面較廣的圖表來源，縮小跟 BTC/ETH 的落差。
+    "sol_currency_overview": ChartSource(
+        url="https://www.coinglass.com/currencies/SOL",
+        selector=".chart-container",
+        description="SOL Currency Overview（SOL 籌碼面總覽：資金費率/多空比/OI）",
+        facet=Facet.POSITIONING,
+    ),
+    "bnb_currency_overview": ChartSource(
+        url="https://www.coinglass.com/currencies/BNB",
+        selector=".chart-container",
+        description="BNB Currency Overview（BNB 籌碼面總覽：資金費率/多空比/OI）",
+        facet=Facet.POSITIONING,
+    ),
+    "xrp_currency_overview": ChartSource(
+        url="https://www.coinglass.com/currencies/XRP",
+        selector=".chart-container",
+        description="XRP Currency Overview（XRP 籌碼面總覽：資金費率/多空比/OI）",
         facet=Facet.POSITIONING,
     ),
     "liquidation_heatmap": ChartSource(
@@ -211,7 +263,8 @@ class WebChartCaptureSource:
             name="web_chart_capture",
             description=(
                 "從預定義網頁截取圖表截圖並解析。支援宏觀經濟指標、"
-                "鏈上數據、衍生品數據等 15 種預定義圖表來源。"
+                "鏈上數據、衍生品數據等 21 種預定義圖表來源"
+                "（SOL/BNB/XRP 各有 open_interest 與 currency_overview 兩種）。"
             ),
             parameters={
                 "type": "object",

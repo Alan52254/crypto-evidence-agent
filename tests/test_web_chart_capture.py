@@ -42,9 +42,9 @@ def _make_source() -> WebChartCaptureSource:
 class TestChartRegistry:
     """驗證 CHART_REGISTRY 的完整性。"""
 
-    def test_registry_contains_fifteen_entries(self) -> None:
-        """CHART_REGISTRY 應有 15 筆預定義圖表。"""
-        assert len(CHART_REGISTRY) == 15
+    def test_registry_contains_twentyone_entries(self) -> None:
+        """CHART_REGISTRY 應有 21 筆預定義圖表（含 SOL/BNB/XRP 各 2 筆）。"""
+        assert len(CHART_REGISTRY) == 21
 
     def test_all_entries_are_chart_source(self) -> None:
         """每筆 entry 都是 ChartSource 實例。"""
@@ -73,7 +73,7 @@ class TestChartRegistry:
             assert source.description, f"{key} has empty description"
 
     def test_expected_chart_ids_present(self) -> None:
-        """預期的 15 個 chart_id 全部存在。"""
+        """預期的 21 個 chart_id 全部存在（含 SOL/BNB/XRP 補齊的對稱項目）。"""
         expected_ids = {
             "us_m2_supply",
             "us_fed_funds_rate",
@@ -87,6 +87,12 @@ class TestChartRegistry:
             "eth_etf_flow",
             "btc_funding_rate",
             "btc_open_interest",
+            "sol_open_interest",
+            "bnb_open_interest",
+            "xrp_open_interest",
+            "sol_currency_overview",
+            "bnb_currency_overview",
+            "xrp_currency_overview",
             "liquidation_heatmap",
             "eth_gas_burned",
             "defi_tvl_overview",

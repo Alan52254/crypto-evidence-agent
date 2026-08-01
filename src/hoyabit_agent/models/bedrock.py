@@ -40,7 +40,7 @@ BEDROCK_REGION_ENV = "BEDROCK_REGION"
 BEDROCK_MODEL_ENV = "BEDROCK_MODEL"
 
 DEFAULT_REGION = "us-east-1"
-DEFAULT_MODEL = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
 DEFAULT_TIMEOUT_SECONDS = 90.0
 MAX_RETRIES = 2
 
@@ -245,7 +245,7 @@ class BedrockProvider:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "X-Amz-Bedrock-Api-Key": self._api_key,
+            "Authorization": f"Bearer {self._api_key}",
         }
 
         for attempt in range(MAX_RETRIES + 1):

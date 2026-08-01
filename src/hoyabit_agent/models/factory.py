@@ -18,11 +18,24 @@ async def create_model_provider(client: httpx.AsyncClient) -> "ModelProvider | N
 
     優先級：
     1. MODEL_PROVIDER 環境變數指定的 provider
+       - "bedrock": 單用 Bedrock Claude，不設 failover（Phase 1 決策）
+       - "groq": Groq primary, Gemini secondary
+       - 其他/空: Gemini primary, Groq secondary
     2. 嘗試 Gemini（有 GEMINI_API_KEY 時）
     3. 嘗試 Groq（有 GROQ_API_KEY 時）
     4. 回傳 None（呼叫端據此降級）
     """
     preferred = os.environ.get(PROVIDER_ENV, "").strip().lower()
+
+    # Bedrock 路徑 — 單用，不 failover。
+    # Phase 1 決策：先驗證單一模型品質，failover 一致性風險待 Phase 2 評估。
+    if preferred == "bedrock":
+        from hoyabit_agent.models.bedrock import BedrockProvider
+
+        bedrock_provider = BedrockProvider.from_environment(client)
+        if bedrock_provider is not None:
+            return bedrock_provider
+        # Bedrock key 不存在時，退回下面的 Gemini/Groq 路徑
 
     from hoyabit_agent.models.gemini import GeminiProvider
     from hoyabit_agent.models.groq import GroqProvider

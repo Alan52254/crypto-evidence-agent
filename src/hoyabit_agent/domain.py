@@ -298,6 +298,20 @@ class Report:
     evidence: tuple[Evidence, ...]
     question: str = "請分析當前市場狀況"
     limitations: tuple[str, ...] = ()
+    model_used: str = ""
+    """產出本報告的模型識別碼（如 anthropic.claude-sonnet-4-6、gemini-3.6-flash）。
+
+    由 run.py 在組裝報告時填入。空字串代表未知（舊報告相容）。
+    用途：同一系統可能在不同時刻用不同模型，此欄位讓使用者與回測比較
+    能區分「是模型差異」還是「是 prompt/資料差異」造成的輸出不同。
+    """
+    schema_version: str = "1.0"
+    """prompt + JSON schema 的版本標記。
+
+    同一模型不同版本的 prompt 也可能造成輸出差異。記這個版本才能在
+    半年後回頭比較時，分辨「是模型換了」還是「是 prompt 改了」。
+    變更時機：CLAIMS_SCHEMA 結構改變、或 SYNTHESIS_SYSTEM prompt 大改時遞增。
+    """
     """本次分析明確承認的限制 —— 由分析回合動態計算,不是寫死的清單。
 
     來源:回測模式取不到的證據面、未關閉的必補缺口、被拒絕/爭議的判斷。
@@ -308,6 +322,13 @@ class Report:
     """分析涵蓋的最早時間點 —— 由證據的 retrieved_at 與內容時間推導。"""
     analysis_window_end: datetime | None = None
     """分析涵蓋的最晚時間點 —— 由證據的 retrieved_at 推導。"""
+    review_applied: bool = False
+    """這份報告是否經過 Layer 3 review（語氣修飾 + 面向矛盾解釋）。
+
+    False 代表 review 層被跳過（provider 不支援純文字通道），
+    報告中的語氣強度與矛盾處理完全由 synthesise 階段的模型原始輸出決定，
+    未經額外審查。使用者應據此判斷報告的精修程度。
+    """
 
     def to_markdown(self) -> str:
         """由已過濾的結構化判斷渲染 —— 不是從散文剪裁出來的。"""
@@ -324,6 +345,12 @@ class Report:
             lines.append(
                 f"**資料截至**：{self.analysis_window_end.strftime('%Y-%m-%d %H:%M UTC')}"
             )
+
+        # 方法論標記 — 讓使用者知道這份報告由哪個模型/schema 版本產出
+        if self.model_used:
+            lines.append(f"**模型**：{self.model_used} (schema v{self.schema_version})")
+        if not self.review_applied:
+            lines.append("**⚠️ 注意**：本報告未經 review 層審查（語氣修飾、面向矛盾解釋未套用）")
 
         if isinstance(self.confidence, InsufficientEvidence):
             present = "、".join(sorted(f.value for f in self.confidence.facets_present)) or "無"

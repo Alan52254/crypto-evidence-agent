@@ -166,6 +166,27 @@ def _describe(arguments: Arguments) -> str:
     return json.dumps(arguments, ensure_ascii=False, sort_keys=True)
 
 
+def _get_model_id(model: ModelProvider) -> str:
+    """從 ModelProvider 取出模型識別碼。
+
+    各 provider 的識別碼取法不同：
+    - BedrockProvider: model_id 屬性
+    - GeminiProvider: _model 屬性
+    - ResilientModelAdapter: 從 primary 遞迴取
+    - 其他: 回傳類別名稱作為 fallback
+    """
+    # BedrockProvider 有明確的 model_id property
+    if hasattr(model, "model_id"):
+        return str(model.model_id)
+    # ResilientModelAdapter wraps a primary
+    if hasattr(model, "_primary"):
+        return _get_model_id(model._primary)
+    # GeminiProvider 用 _model 屬性
+    if hasattr(model, "_model"):
+        return str(model._model)
+    return type(model).__name__
+
+
 async def analyse(
     request: AnalysisRequest,
     sources: Sources,
@@ -512,6 +533,7 @@ async def analyse(
     # 只在供應者能做「純文字生成」時啟用。`synthesise` 不適合當審查通道：
     # 它回傳的是 DraftClaim 陣列而非文字，硬用它做審查只會拿到空結果
     # （這裡原本有一個永遠回傳 None 的 `_review_call`，等於審查從未生效）。
+    review_applied = False
     if drafts:
         from hoyabit_agent.review import enforce_paired_disclosure, review_claims
 
@@ -521,8 +543,19 @@ async def analyse(
                 drafts = await review_claims(
                     drafts, gathered, facet_stances(gathered), review_call
                 )
+                review_applied = True
             except Exception:  # noqa: BLE001 — 審查是修飾，失敗不該中斷分析
-                pass
+                recorder.record(
+                    TraceNodeKind.REPORT,
+                    "review layer 執行失敗（例外），語氣修飾與矛盾解釋未套用",
+                )
+        else:
+            # 明確記錄 review 層被跳過 — 不能靜默消失
+            recorder.record(
+                TraceNodeKind.REPORT,
+                "review layer skipped: provider does not support text generation channel. "
+                "語氣修飾、面向矛盾解釋未套用。報告品質可能受影響。",
+            )
 
         # 規則式配對揭露（確定性，不依賴 LLM）——
         # 即使審查層未生效或漏掉配對規則，這一步也會補上。
@@ -546,6 +579,8 @@ async def analyse(
         unavailable_facets=requirement.unavailable_facets,
         boundary_notes=requirement.boundary_notes,
         core_data_demands=requirement.core_data_demands,
+        review_applied=review_applied,
+        model_used=_get_model_id(model),
     )
     return AnalysisOutcome(
         run_id=identifier,
@@ -646,6 +681,8 @@ def _assemble(
     unavailable_facets: frozenset[Facet] = frozenset(),
     boundary_notes: tuple[str, ...] = (),
     core_data_demands: tuple[object, ...] = (),
+    review_applied: bool = False,
+    model_used: str = "",
 ) -> Report:
     """組裝階段 —— 判斷先經帳本驗證，再渲染。
 
@@ -836,6 +873,8 @@ def _assemble(
         evidence=gathered,
         question=question,
         limitations=tuple(report_limitations),
+        model_used=model_used,
+        review_applied=review_applied,
         analysis_window_start=window_start,
         analysis_window_end=window_end,
     )

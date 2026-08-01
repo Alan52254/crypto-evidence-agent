@@ -85,7 +85,9 @@ def find_orphan_indicators(
     orphans: list[OrphanIndicator] = []
 
     for idx, claim in enumerate(drafts):
-        matches = list(_INDICATOR_PATTERN.finditer(claim.text))
+        # Skip paired disclosure text — it's system-generated, not LLM hallucination
+        text_to_scan = re.sub(r"（對照：[^）]*）", "", claim.text)
+        matches = list(_INDICATOR_PATTERN.finditer(text_to_scan))
         if not matches:
             continue
 

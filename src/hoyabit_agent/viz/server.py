@@ -394,6 +394,27 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
     else:
         logging.info("PostgreSQL unreachable on 5433/5432. Falling back to InMemoryAnalysisStore.")
 
+    # AWS session check — Athena/Kinesis/Bedrock 全依賴 SSO token，
+    # session 過期時三者都會報 LoginRefreshRequired 而非空結果。
+    # 不在這裡阻擋啟動（Agent 的降級設計會跳過不可用來源），
+    # 但明確告知操作者現在的狀態，避免等分析跑完才知道 AWS 掛了。
+    try:
+        import boto3
+        sts = boto3.client("sts")
+        identity = sts.get_caller_identity()
+        logging.info(
+            "AWS session OK — Account: %s, ARN: %s",
+            identity.get("Account", "?"),
+            identity.get("Arn", "?")[:60],
+        )
+    except Exception as aws_err:
+        logging.warning(
+            "AWS session EXPIRED or not configured: %s — "
+            "Athena/Kinesis/Bedrock 工具將不可用。"
+            "修復: 'aws sso login' 或設定 AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY",
+            aws_err,
+        )
+
     app = create_app(store, production_runner)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     await uvicorn.Server(config).serve()

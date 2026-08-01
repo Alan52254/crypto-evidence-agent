@@ -239,6 +239,76 @@ class BedrockProvider:
         except (TypeError, ValueError):
             return tuple(0.0 for _ in texts)
 
+    # ─── Vision (chart OCR) ───
+
+    async def analyze_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        asset: str,
+        context: str,
+    ) -> dict[str, Any] | None:
+        """Claude Vision 多模態圖表分析 — 替代原本的 Gemini Vision。
+
+        chart_ocr.py 用鴨子型別偵測此方法是否存在。
+        回傳 {"summary": str, "stance_hint": float, "facet": str} 或 None。
+        """
+        import base64
+
+        b64_image = base64.b64encode(image_bytes).decode("ascii")
+
+        system_prompt = (
+            "你是加密貨幣市場圖表分析專家。分析提供的圖片，抽取：\n"
+            "1. 圖表類型（K線、折線、柱狀、熱力圖等）\n"
+            "2. 可見的數值範圍與關鍵價位\n"
+            "3. 趨勢方向（上升/下降/盤整）\n"
+            "4. 任何可辨識的技術指標數值\n\n"
+            "回傳 JSON 格式：\n"
+            '{"summary": "一句話描述圖表內容與趨勢", '
+            '"stance_hint": 0.3, '  # -1.0 到 1.0
+            '"facet": "technical"}\n\n'
+            "stance_hint: 正值=偏多趨勢, 負值=偏空趨勢, 0=中性\n"
+            "facet: technical 或 positioning\n"
+            "只回傳 JSON，不要其他文字。"
+        )
+
+        user_content = [
+            {
+                "image": {
+                    "format": mime_type.split("/")[-1] if "/" in mime_type else "png",
+                    "source": {"bytes": b64_image},
+                },
+            },
+            {"text": f"分析此 {asset} 相關圖表。背景脈絡：{context or '無'}"},
+        ]
+
+        body = await self._converse(
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}],
+        )
+        if body is None:
+            return None
+
+        text = self._extract_text(body)
+        if not text:
+            return None
+
+        try:
+            result = json.loads(text)
+            if isinstance(result, dict) and "summary" in result:
+                return result
+        except json.JSONDecodeError:
+            import re
+            match = re.search(r"\{[^}]+\}", text)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+
+        logger.warning("[Bedrock Vision] 無法解析圖表分析回應: %s", text[:100])
+        return None
+
     # ─── 內部方法 ───
 
     async def _converse(

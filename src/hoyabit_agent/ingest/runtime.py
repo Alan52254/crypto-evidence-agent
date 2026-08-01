@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import httpx
 
 from hoyabit_agent.ingest.embeddings import GeminiEmbedder
@@ -10,10 +11,14 @@ from hoyabit_agent.ingest.postgres_store import PostgresMarketDocumentStore
 from hoyabit_agent.models.vision import VisionModelAdapter
 from hoyabit_agent.seams import EvidenceSource, ModelProvider
 from hoyabit_agent.sources.binance import BinanceDerivativesSource, BinanceSpotSource
+from hoyabit_agent.sources.cached_source import wrap_with_cache
 from hoyabit_agent.sources.chart_reader import ChartReaderSource
 from hoyabit_agent.sources.news import NewsRssSource
 from hoyabit_agent.sources.web_chart_capture import WebChartCaptureSource
+from hoyabit_agent.storage.cache_dynamodb import get_cache
 from hoyabit_agent.storage.postgres import reachable
+
+logger = logging.getLogger(__name__)
 
 
 async def build_market_evidence_source(
@@ -43,6 +48,7 @@ async def build_competition_sources(
         ExtendedNewsSource,
         OfficialAnnouncementSource,
     )
+    from hoyabit_agent.sources.blockchair import BlockchairOnChainSource
     from hoyabit_agent.sources.candlestick_builder import CandlestickBuilderSource
     from hoyabit_agent.sources.chart_ocr import ChartOCRSource
     from hoyabit_agent.sources.coingecko import CoinGeckoSource
@@ -62,6 +68,7 @@ async def build_competition_sources(
         FredMacroSource(client),
         ChartOCRSource(client, model_provider=model),
         CandlestickBuilderSource(client),
+        BlockchairOnChainSource(client),
     ]
     # 優先用 pgvector 版本（完整語意檢索）；連不上就用 CSV 直讀版
     historical = await build_market_evidence_source(client)
@@ -76,19 +83,30 @@ async def build_competition_sources(
         sources.append(ChartReaderSource(client, vision_adapter))
         sources.append(WebChartCaptureSource(client, vision_adapter))
 
+    # ─── DynamoDB 快取初始化（靜默降級；boto3 未安裝或連不到都不阻斷）───
+    cache = get_cache()
+    try:
+        cache.ensure_tables_exist()
+    except Exception as exc:
+        logger.warning("[runtime] DynamoDB table init failed (non-blocking): %s", exc)
+
     # Athena 歷史資料倉儲（S3 + Glue + Athena）—— 有 AWS 認證時自動啟用
+    # 包裝 DynamoDB 快取：昂貴的 SQL 查詢結果快取 5 分鐘
     try:
         from hoyabit_agent.sources.athena import AthenaEvidenceSource
 
-        sources.append(AthenaEvidenceSource())
+        athena_source = AthenaEvidenceSource()
+        sources.append(wrap_with_cache(athena_source, cache=cache, ttl_seconds=300))
     except Exception:
         pass  # 沒有 boto3 或 AWS 認證時靜默跳過
 
     # Kinesis 即時串流（Binance WS → Kinesis → Evidence）—— 有 AWS 認證時自動啟用
+    # 包裝 DynamoDB 快取：即時價格快取 60 秒（短 TTL 保持即時性）
     try:
         from hoyabit_agent.sources.kinesis_stream import KinesisEvidenceSource
 
-        sources.append(KinesisEvidenceSource())
+        kinesis_source = KinesisEvidenceSource()
+        sources.append(wrap_with_cache(kinesis_source, cache=cache, ttl_seconds=60))
     except Exception:
         pass  # 沒有 boto3 或 AWS 認證時靜默跳過
 

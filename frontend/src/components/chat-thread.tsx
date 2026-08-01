@@ -13,6 +13,7 @@ import {
   Check,
   Download,
 } from "lucide-react";
+import { ExportZipButton } from "@/components/export-zip-button";
 import type {
   AnalysisReport,
   Asset,
@@ -701,6 +702,9 @@ function ReportResponse({
           </div>
         </details>
       )}
+
+      {/* ZIP Download Button */}
+      <ExportZipButton runId={report.run_id} />
     </div>
   );
 }

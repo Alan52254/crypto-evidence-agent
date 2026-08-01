@@ -88,6 +88,22 @@ class ResilientModelAdapter:
 
         return tuple(0.0 for _ in texts)
 
+    async def analyze_image(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        asset: str,
+        context: str,
+    ) -> dict[str, Any] | None:
+        """透傳到 primary 的 analyze_image（若有）。"""
+        primary = self._primary
+        if hasattr(primary, "analyze_image"):
+            try:
+                return await primary.analyze_image(image_bytes, mime_type, asset, context)
+            except Exception as exc:
+                logger.warning("[Resilient] analyze_image 失敗: %s", exc)
+        return None
+
     async def _try_provider_plan(
         self,
         provider: ModelProvider,

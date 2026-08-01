@@ -25,6 +25,9 @@ vision = [
     "playwright>=1.48",
     "Pillow>=10.0",
 ]
+export = [
+    "reportlab>=4.2",
+]
 
 [project.scripts]
 hoyabit-mcp = "hoyabit_agent.mcp_server:main"

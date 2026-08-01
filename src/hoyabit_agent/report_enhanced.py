@@ -301,7 +301,9 @@ def _methodology(report: Report, outcome: AnalysisOutcome) -> str:
         from hoyabit_agent.domain import ClaimRole
         watch_claims = [c for c in report.claims if c.role == ClaimRole.WATCH]
         if watch_claims:
-            limitation_lines = "\n".join(f"- {c.text[:150]}" for c in watch_claims)
+            # 取 watch claim 的前兩則作為限制聲明，不截斷文字
+            # （截斷會產生讀起來斷掉的句子，影響報告專業度）
+            limitation_lines = "\n".join(f"- {c.text}" for c in watch_claims[:2])
         else:
             limitation_lines = "- 本回合未偵測到需特別聲明的資料或推理限制"
 

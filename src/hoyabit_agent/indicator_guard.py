@@ -114,10 +114,10 @@ def enforce_indicator_citations(
     drafts: tuple[DraftClaim, ...],
     evidence: tuple[Evidence, ...],
 ) -> tuple[DraftClaim, ...]:
-    """掃描 claim text，若含技術指標數值但無對應 evidence_id，標記警告。
+    """掃描 claim text，若含技術指標數值但無對應 evidence_id，移除並標記。
 
-    策略：不 drop claim，而是在有孤兒數字的 claim text 末尾加上警告標記。
-    這讓 claim 仍然通過，但讀者和稽核者能看到哪些數字可能是幻覺。
+    策略：移除幻覺數字所在的句段，在 text 末尾加上警告標記。
+    這確保最終報告不包含無法溯源的具體數值，同時保留可溯源的部分。
 
     若無任何孤兒數字，回傳原始 drafts（零開銷）。
     """
@@ -133,18 +133,41 @@ def enforce_indicator_citations(
     result = list(drafts)
     for idx, claim_orphans in orphan_by_claim.items():
         claim = result[idx]
+        cleaned_text = claim.text
+
+        # 移除包含幻覺數字的片段（指標名+數字的 match span）
+        for orphan in claim_orphans:
+            # 構建一個 pattern 來找到並移除包含此指標值的局部文字
+            # 匹配「指標名...分隔符...數字」的最小包圍片段
+            # 關鍵：value 前面必須有明確分隔符（=、:、空格），
+            # 避免把 "RSI14" 這種指標名稱裡的數字誤砍。
+            removal_pattern = re.compile(
+                re.escape(orphan.indicator)
+                + r"[\s\(\)]*"  # 不含 \d — 避免吃掉指標參數
+                + r"[=:：]\s*"  # 必須有分隔符
+                + re.escape(orphan.value)
+                + r"[%]?",
+                re.IGNORECASE,
+            )
+            cleaned_text = removal_pattern.sub("", cleaned_text)
+
+        # 清理多餘的空白和標點殘留
+        cleaned_text = re.sub(r"\s{2,}", " ", cleaned_text).strip()
+        cleaned_text = re.sub(r"[，、；]\s*[，、；]", "，", cleaned_text)
+
         indicators = ", ".join(
             f"{o.indicator}={o.value}" for o in claim_orphans
         )
-        warning = f"（⚠️ 以下數值未在引用證據中找到對應：{indicators}）"
 
         logger.warning(
-            "[indicator_guard] claim #%d has orphan indicators: %s",
+            "[indicator_guard] claim #%d: removed orphan indicators: %s",
             idx, indicators,
         )
 
+        # 不把警告訊息寫進 claim text — 那是使用者看的報告，
+        # 不該出現系統除錯訊息。警告只留在 trace log。
         result[idx] = DraftClaim(
-            text=f"{claim.text} {warning}",
+            text=cleaned_text,
             evidence_ids=claim.evidence_ids,
             facet=claim.facet,
             role=claim.role,

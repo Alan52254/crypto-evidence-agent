@@ -180,8 +180,18 @@ _Avoid_: 猜測、外部常識補完
 ### enforce_paired_disclosure 在 Bedrock 上的狀態
 
 **現狀**：deterministic function，與模型無關。interface 是 `tuple[DraftClaim, ...]`。
-已通過 unit test 驗證在 Bedrock 的 evidence ID 命名格式（BNC-SPOT-XXX-SMA60 等）下正確觸發。
 
-**注意**：Claude 的指令跟隨度較高，在目前的測試中自然引用了配對指標的雙方，
-導致此防線「未在實戰中被觸發過」。這不代表它不需要存在 — 它是最後一道
-deterministic 保障，當模型偶爾遺漏配對時才觸發。
+**已驗證**：函數邏輯本身以 unit test 確認正確 — 手動構造只引用 SMA60 的 DraftClaim
+（使用與 Bedrock 輸出相同的 evidence ID 命名格式 BNC-SPOT-XXX-SMA60），
+函數正確注入 SMA200 的 evidence_id 與摘要文字。這證明「如果 Claude 產出只引用
+單邊指標的 claim，此函數會接住」。
+
+**尚未驗證**：在真實 Bedrock 端到端 pipeline 中，此函數從未被實際觸發過。
+原因是 Claude Sonnet 4.6 的指令跟隨度較高，目前所有測試中它都自然引用了
+配對指標的雙方，導致函數的 `if cited_members and missing_members` 條件
+從未成立。因此「Claude 真實產出 → enforce_paired_disclosure 觸發 → 正確補上遺漏」
+這條端到端路徑是假設性的，不是觀察到的事實。
+
+**結論**：此函數是 model-agnostic 的最後一道 deterministic 保障。
+函數本身可靠（unit test），但「它在真實運行中有沒有機會被需要」仍是未知。
+不要因為「目前沒被觸發」就移除它 — 它的價值正是在模型偶爾失手時才顯現。

@@ -176,10 +176,39 @@ def evidence_gap(
     return EvidenceGap(missing, balanced, contradictions, len(sources), fresh, tuple(reasons))
 
 def facet_stance(evidence: Iterable[Evidence]) -> Stance:
-    """單一證據面的方向傾向。每個面必須能獨立產出傾向 —— 這是信心度的前提。"""
-    hints = [item.stance_hint for item in evidence]
-    if not hints:
+    """單一證據面的方向傾向。每個面必須能獨立產出傾向 —— 這是信心度的前提。
+
+    特殊處理：sentiment 面的方向由**市場情緒指標**（如 FGI）主導，
+    而非新聞文本語氣（NEWS-SENT）。原因：正面新聞（如升級公告）
+    可以在恐懼市場中被報導，兩者不矛盾但不該被平均成一個方向。
+    新聞語氣正面 ≠ 市場情緒正面。
+
+    NEWS-SENT 項仍保留在 sentiment 面（用於覆蓋率、引用、呈現），
+    但不參與方向投票。
+    """
+    items = list(evidence)
+    if not items:
         return Stance.NEUTRAL
+
+    # 區分「市場情緒指標」與「新聞語氣」
+    # 市場情緒指標：FGI-*, 或其他非新聞來源的 sentiment evidence
+    # 新聞語氣：NEWS-SENT-*, XNEWS-SENT-*
+    market_sentiment_hints = []
+    news_tone_hints = []
+
+    for item in items:
+        if item.id.startswith("NEWS-SENT-") or item.id.startswith("XNEWS-SENT-"):
+            news_tone_hints.append(item.stance_hint)
+        else:
+            market_sentiment_hints.append(item.stance_hint)
+
+    # 方向判定優先用市場情緒指標；若沒有市場指標才退回全體平均
+    if market_sentiment_hints:
+        hints = market_sentiment_hints
+    else:
+        # 沒有 FGI 等市場指標時，才用新聞語氣作為 fallback
+        hints = [item.stance_hint for item in items]
+
     mean = sum(hints) / len(hints)
     if mean > STANCE_THRESHOLD:
         return Stance.BULLISH

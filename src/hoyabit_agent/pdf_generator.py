@@ -440,9 +440,9 @@ def generate_config_pdf(outcome: AnalysisOutcome, session_id: str | None = None)
     # Model Configuration
     story.append(Paragraph("Model Configuration", styles["heading"]))
     model_data = [
-        ["Provider", os.environ.get("MODEL_PROVIDER", "gemini")],
-        ["Model", os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")],
-        ["Embedding Model", os.environ.get("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")],
+        ["Provider", os.environ.get("MODEL_PROVIDER", "bedrock")],
+        ["Model", os.environ.get("BEDROCK_MODEL", "us.anthropic.claude-sonnet-4-6")],
+        ["Region", os.environ.get("BEDROCK_REGION", "us-east-1")],
     ]
     mt = Table(model_data, colWidths=[4 * cm, 12.5 * cm])
     mt.setStyle(TableStyle([
@@ -484,14 +484,16 @@ def generate_config_pdf(outcome: AnalysisOutcome, session_id: str | None = None)
     sources = [
         "binance_spot (Binance Spot Market OHLCV + Order Book)",
         "binance_derivatives (Funding Rate, OI, Long/Short Ratio)",
-        "news_rss (CoinDesk, Cointelegraph)",
+        "crypto_news (CoinDesk, Cointelegraph RSS)",
         "extended_news (Blocktempo, Blockworks)",
         "official_announcements (Project Blogs)",
-        "athena_historical_query (AWS Athena Data Warehouse)",
-        "kinesis_realtime_prices (AWS Kinesis Stream)",
+        "coingecko_market (Market Cap, Volume, Price Changes)",
+        "defillama_tvl (On-chain TVL by Chain)",
+        "fear_greed_index (Crypto Fear & Greed 0-100)",
+        "fred_macro (Fed Funds Rate, M2, CPI, DXY, 10Y Treasury)",
+        "candlestick_chart_builder (SVG K-line Charts)",
+        "ocr_chart_extractor (Claude Vision Chart Analysis)",
         "market_dataset_context (Competition OHLCV Dataset)",
-        "chart_reader (Gemini Vision Chart Analysis)",
-        "web_chart_capture (Automated Web Chart Screenshot)",
     ]
     for src in sources:
         story.append(Paragraph(f"&bull; {_escape(src)}", styles["bullet"]))

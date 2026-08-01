@@ -429,6 +429,24 @@ class Report:
         return "\n".join(lines)
 
 
+def _detect_primary_asset_from_question(question: str) -> str | None:
+    """從題目文字推導 primary asset。
+
+    比賽題目格式固定為「請針對【幣種】…」或「分析【幣種】…」，
+    且幣種池只有 BTC/ETH/SOL/BNB/XRP 五個。
+    規則式偵測即可，不需要 LLM。
+
+    回傳第一個在文字中出現的幣種代號（字串），找不到回傳 None。
+    比較題（同時出現兩個幣種）回傳第一個出現的作為 primary。
+    """
+    import re
+    # 用 word boundary 匹配，避免 "SOLANA" 裡的 SOL 被誤抓
+    for symbol in ("BTC", "ETH", "SOL", "BNB", "XRP"):
+        if re.search(rf"\b{symbol}\b", question, re.IGNORECASE):
+            return symbol
+    return None
+
+
 @dataclass(frozen=True)
 class AnalysisRequest:
     """分析請求 —— 對某個幣種發起分析的意圖。
@@ -450,6 +468,20 @@ class AnalysisRequest:
         from hoyabit_agent.sanitizer import sanitize_user_question
 
         object.__setattr__(self, "question", sanitize_user_question(self.question))
+
+        # ─── 題目文字優先：自動推導 primary asset ───
+        # 比賽現場高壓情境下，操作者可能在 UI 選了 BTC 但題目問的是 BNB。
+        # 以題目文字裡明確出現的幣種為準，自動覆蓋 asset 欄位。
+        # 這防止「報告標題寫 BTC 但內容分析 BNB」的不一致問題。
+        detected = _detect_primary_asset_from_question(self.question)
+        if detected is not None and detected != self.asset:
+            import logging
+            logging.getLogger(__name__).warning(
+                "[AnalysisRequest] 題目文字推導的幣種 (%s) 與 request.asset (%s) 不一致，"
+                "以題目文字為準自動覆蓋。",
+                detected, self.asset,
+            )
+            object.__setattr__(self, "asset", detected)
 
 
 class AnalysisRegime(Enum):

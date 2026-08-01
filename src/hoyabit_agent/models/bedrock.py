@@ -266,7 +266,7 @@ class BedrockProvider:
                 }
             ],
             "inferenceConfig": {
-                "maxTokens": 8192,
+                "maxTokens": 16384,
                 "temperature": 0.1,
             },
         }

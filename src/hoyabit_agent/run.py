@@ -453,7 +453,14 @@ async def analyse(
         )
 
         results = await asyncio.gather(
-            *(_invoke(inv, registry, asset, io_timeout_seconds) for inv in valid_invocations)
+            *(
+                _invoke(
+                    inv, registry,
+                    gate_asset(str(inv.arguments.get("asset", asset.value))) or asset,
+                    io_timeout_seconds,
+                )
+                for inv in valid_invocations
+            )
         )
 
         fresh: list[Evidence] = []

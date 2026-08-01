@@ -22,13 +22,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -36,7 +39,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from hoyabit_agent.domain import AnalysisOutcome, Report
+from hoyabit_agent.domain import AnalysisOutcome, Figure
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +163,90 @@ def _make_doc(buffer: io.BytesIO) -> SimpleDocTemplate:
 
 
 # ═══════════════════════════════════════════════════════════════════
+# Chart embedding — 兩種 Figure.kind 各自的嵌入方式
+# ═══════════════════════════════════════════════════════════════════
+
+def _fetch_image_bytes(url: str) -> bytes:
+    """下載外部圖表圖片的 bytes。
+
+    獨立成一個函式，好讓測試能直接 monkeypatch 這一行，不必真的連網
+    也不必假造 HTTP transport ——PDF 生成是同步的，跟 evidence source
+    那層的 `httpx.AsyncClient` 注入不是同一個接縫。
+    """
+    resp = httpx.get(url, timeout=10.0, follow_redirects=True)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _embed_generated_svg(fig: Figure, styles: dict[str, ParagraphStyle]) -> list[Any]:
+    """把自繪 SVG（data_uri，來自 candlestick_builder.py 等）轉成 drawing 嵌入。"""
+    flowables: list[Any] = []
+    try:
+        import base64
+        import tempfile
+        # data_uri = "data:image/svg+xml;base64,..."
+        b64_part = fig.data_uri.split(",", 1)[1] if fig.data_uri and "," in fig.data_uri else ""
+        svg_bytes = base64.b64decode(b64_part)
+        # svglib 需要檔案路徑，不支援 BytesIO
+        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as tmp:
+            tmp.write(svg_bytes)
+            tmp_path = tmp.name
+        from svglib.svglib import svg2rlg
+        drawing = svg2rlg(tmp_path)
+        os.unlink(tmp_path)  # 清理暫存檔
+        if drawing:
+            # 縮放到頁面寬度
+            scale = min(16 * cm / drawing.width, 1.0)
+            drawing.width *= scale
+            drawing.height *= scale
+            drawing.scale(scale, scale)
+            flowables.append(drawing)
+            if fig.caption:
+                flowables.append(Paragraph(f"<i>{_escape(fig.caption)}</i>", styles["meta"]))
+            flowables.append(Spacer(1, 8))
+    except Exception as exc:
+        logger.warning("[PDF] SVG embed failed: %s", exc)
+        # svglib 不可用或 SVG 解析失敗 — 只顯示 caption
+        if fig.caption:
+            flowables.append(Paragraph(f"[Chart: {_escape(fig.caption)}]", styles["meta"]))
+    return flowables
+
+
+def _embed_external_figure(fig: Figure, styles: dict[str, ParagraphStyle]) -> list[Any]:
+    """下載外部圖表圖片並嵌入 —— 跟聊天室 `<img src=source_url>` 看到同一張圖。
+
+    製圖正確性由原始來源負責，PDF 只忠實呈現並標明「外部圖表引用」，
+    跟 `report_enhanced.py::_figures_section` 的溯源語意保持一致
+    （見 CONTEXT.md「證據面」一節：自繪圖可重算，外部圖只是引用）。
+    """
+    flowables: list[Any] = []
+    try:
+        assert fig.source_url is not None
+        img_bytes = _fetch_image_bytes(fig.source_url)
+        reader = ImageReader(io.BytesIO(img_bytes))
+        native_w, native_h = reader.getSize()
+        scale = min(16 * cm / native_w, 1.0) if native_w else 1.0
+        flowables.append(
+            Image(io.BytesIO(img_bytes), width=native_w * scale, height=native_h * scale)
+        )
+        caption = (
+            f"{fig.caption}（外部圖表引用，製圖正確性由原始來源負責）"
+            if fig.caption else "（外部圖表引用）"
+        )
+        flowables.append(Paragraph(f"<i>{_escape(caption)}</i>", styles["meta"]))
+        flowables.append(Spacer(1, 8))
+    except Exception as exc:
+        logger.warning("[PDF] External figure embed failed: %s", exc)
+        # 下載失敗（斷線、404、非圖片內容）— 退回只顯示 caption + 原圖連結
+        caption = fig.caption or "外部圖表"
+        flowables.append(Paragraph(
+            f"[外部圖表：{_escape(caption)}] 原圖：{_escape(fig.source_url or '')}",
+            styles["meta"],
+        ))
+    return flowables
+
+
+# ═══════════════════════════════════════════════════════════════════
 # 1. Analysis Report PDF
 # ═══════════════════════════════════════════════════════════════════
 
@@ -226,46 +313,19 @@ def generate_report_pdf(outcome: AnalysisOutcome) -> bytes:
     story.append(ft)
     story.append(Spacer(1, 12))
 
-    # Charts (SVG figures embedded from evidence)
+    # Charts — 聊天室（FigureGallery）跟 enhanced_report_md 兩者都呈現
+    # generated（自繪 SVG）與 external（chart_ocr.py 等來源引用的外部圖表）
+    # 兩種 kind；PDF 之前只認 generated，external 連 caption 都看不到。
     figures = [
-        fig
-        for item in report.evidence
-        for fig in (item.figures or ())
-        if fig.kind.value == "generated" and fig.data_uri
+        fig for item in report.evidence for fig in (item.figures or ())
     ]
     if figures:
         story.append(Paragraph("Technical Charts", styles["heading"]))
         for fig in figures[:6]:  # 最多 6 張圖（比較題兩幣各3張）
-            try:
-                import base64
-                import tempfile
-                # data_uri = "data:image/svg+xml;base64,..."
-                b64_part = fig.data_uri.split(",", 1)[1] if "," in fig.data_uri else ""
-                svg_bytes = base64.b64decode(b64_part)
-                # svglib 需要檔案路徑，不支援 BytesIO
-                with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as tmp:
-                    tmp.write(svg_bytes)
-                    tmp_path = tmp.name
-                from svglib.svglib import svg2rlg
-                drawing = svg2rlg(tmp_path)
-                os.unlink(tmp_path)  # 清理暫存檔
-                if drawing:
-                    # 縮放到頁面寬度
-                    scale = min(16 * cm / drawing.width, 1.0)
-                    drawing.width *= scale
-                    drawing.height *= scale
-                    drawing.scale(scale, scale)
-                    story.append(drawing)
-                    if fig.caption:
-                        story.append(Paragraph(
-                            f"<i>{_escape(fig.caption)}</i>", styles["meta"]))
-                    story.append(Spacer(1, 8))
-            except Exception as exc:
-                logger.warning("[PDF] SVG embed failed: %s", exc)
-                # svglib 不可用或 SVG 解析失敗 — 只顯示 caption
-                if fig.caption:
-                    story.append(Paragraph(
-                        f"[Chart: {_escape(fig.caption)}]", styles["meta"]))
+            if fig.kind.value == "generated" and fig.data_uri:
+                story.extend(_embed_generated_svg(fig, styles))
+            elif fig.kind.value == "external" and fig.source_url:
+                story.extend(_embed_external_figure(fig, styles))
         story.append(Spacer(1, 12))
 
     # Claims — claim.text 常內嵌 Markdown 表格，用 _render_claim_flowables

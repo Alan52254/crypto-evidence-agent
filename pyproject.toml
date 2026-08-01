@@ -20,6 +20,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "mypy>=1.13",
     "ruff>=0.8",
+    "pypdf>=5.0",  # 測試用：從 generate_report_pdf() 的輸出 bytes 讀回內嵌圖片數量
 ]
 vision = [
     "playwright>=1.48",

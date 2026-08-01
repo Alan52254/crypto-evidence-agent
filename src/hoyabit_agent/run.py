@@ -288,6 +288,7 @@ async def analyse(
         "defillama_tvl",
         "candlestick_chart_builder",
         "official_announcements",
+        "blockchair_onchain",
     )
     _global_sources = (
         "fear_greed_index",

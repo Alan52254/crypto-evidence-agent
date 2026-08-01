@@ -1,6 +1,6 @@
 """Vision OCR Chart Extractor — 多模態圖片圖表數據抽取與證據轉換。
 
-利用 Gemini Vision 多模態能力分析新聞網頁或第三方平台（如 Glassnode、CryptoQuant、TradingView）
+利用 Claude Vision 多模態能力分析新聞網頁或第三方平台（如 Glassnode、CryptoQuant、TradingView）
 嵌入的圖表圖片，抽取數據數值、時間序列趨勢與指標傾向，轉化為帶圖片 URL 溯源的結構化 Evidence。
 """
 
@@ -90,7 +90,7 @@ class ChartOCRSource:
             logger.warning("[ChartOCR] 下載圖片 %s 異常: %s", image_url, exc)
             return ()
 
-        # 2. 呼叫 Gemini Vision 進行多模態解析
+        # 2. 呼叫 Claude Vision 進行多模態解析
         analysis_result = await self._analyze_chart_with_vision(
             image_bytes, mime_type, target_asset, context
         )
@@ -150,7 +150,7 @@ class ChartOCRSource:
         asset: str,
         context: str,
     ) -> dict[str, Any] | None:
-        """運用 Gemini Vision 分析圖片並抽取結構化資訊。"""
+        """運用 Claude Vision 分析圖片並抽取結構化資訊。"""
         if self._model_provider and hasattr(self._model_provider, "analyze_image"):
             try:
                 result = await self._model_provider.analyze_image(

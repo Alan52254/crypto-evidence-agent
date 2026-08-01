@@ -10,6 +10,7 @@ import {
   Minus,
   ExternalLink,
 } from "lucide-react";
+import { ExportZipButton } from "@/components/export-zip-button";
 import type {
   AnalysisReport,
   Asset,
@@ -523,6 +524,9 @@ function ReportResponse({
           />
         </details>
       )}
+
+      {/* ZIP Download Button */}
+      <ExportZipButton runId={report.run_id} />
     </div>
   );
 }

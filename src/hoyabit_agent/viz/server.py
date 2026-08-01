@@ -24,6 +24,7 @@ from hoyabit_agent.config import run_async
 from hoyabit_agent.domain import AnalysisOutcome, AnalysisRequest, TraceNode
 from hoyabit_agent.runtime_events import RuntimeEventBroker
 from hoyabit_agent.seams import AnalysisStore
+from hoyabit_agent.storage.cache_dynamodb import get_cache
 from hoyabit_agent.viz.trace_html import render_outcome, trace_json
 
 AnalysisRunner = Callable[
@@ -83,6 +84,27 @@ def create_app(
         if asset not in {"BTC", "ETH", "SOL", "BNB", "XRP"} or not question:
             return JSONResponse({"error": "asset and question are required"}, status_code=422)
 
+        # Session Memory — 載入歷史對話，實現多輪上下文
+        session_id = str(payload.get("session_id", "")).strip() or None
+        cache = get_cache()
+        context_prefix = ""
+        if session_id:
+            history = cache.get_session_memory(session_id)
+            if history:
+                context_lines = [
+                    f"[{msg['role']}]: {msg['content']}" for msg in history[-10:]
+                ]
+                context_prefix = (
+                    "以下是先前的對話歷史（供上下文參考）：\n"
+                    + "\n".join(context_lines)
+                    + "\n\n當前問題：\n"
+                )
+            # 儲存本次使用者提問
+            cache.save_session_memory(session_id, "user", question)
+
+        # 帶入歷史上下文的完整問題
+        enriched_question = context_prefix + question if context_prefix else question
+
         # 這是即時 demo 端點 —— 未帶 as_of_date 時預設今天,落在即時模式,
         # 讓 live 證據源真的會被呼叫。若靜默退回資料集截止日,回測 regime
         # 會把所有 live 來源濾掉(Step 4),使用者看不出來,系統卻什麼都沒抓。
@@ -98,12 +120,17 @@ def create_app(
         async def execute() -> None:
             try:
                 outcome = await runner(
-                    AnalysisRequest(asset, question, as_of_date=as_of_date),
+                    AnalysisRequest(asset, enriched_question, as_of_date=as_of_date),
                     run_id,
                     lambda node: event_broker.publish_trace(run_id, node),
                 )
                 await store.save(outcome)
                 event_broker.complete(run_id, outcome_payload(outcome))
+
+                # 儲存 assistant 回應至 session memory
+                if session_id and outcome.report is not None:
+                    summary = outcome.report.summary if hasattr(outcome.report, 'summary') else str(outcome.report)
+                    cache.save_session_memory(session_id, "assistant", summary[:2000])
             except Exception as exc:  # noqa: BLE001 — becomes a terminal SSE event
                 event_broker.fail(run_id, f"{type(exc).__name__}: {exc}")
 
@@ -158,6 +185,36 @@ def create_app(
         from hoyabit_agent.artifacts import output_manifest
         return JSONResponse(output_manifest(outcome))
 
+    async def export_artifacts(request: Request) -> Response:
+        """POST /api/v1/export-artifacts — 打包 PDF + 證據 + 日誌 + 配置為 ZIP。"""
+        try:
+            payload = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+        run_id = str(payload.get("run_id", "")).strip()
+        if not run_id:
+            return JSONResponse({"error": "run_id is required"}, status_code=422)
+
+        outcome = await store.load(run_id)
+        if outcome is None:
+            return JSONResponse({"error": "not found", "run_id": run_id}, status_code=404)
+
+        session_id = str(payload.get("session_id", "")).strip() or None
+
+        from hoyabit_agent.download_manager import build_export_zip, export_filename
+        zip_bytes = build_export_zip(outcome, session_id=session_id)
+        filename = export_filename(session_id)
+
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(zip_bytes)),
+            },
+        )
+
     return Starlette(
         routes=[
             Route("/", index),
@@ -165,6 +222,7 @@ def create_app(
             Route("/run/{run_id}/trace.json", run_json),
             Route("/api/v1/analyse", start_analysis, methods=["POST"]),
             Route("/api/v1/stream_trace", stream_trace),
+            Route("/api/v1/export-artifacts", export_artifacts, methods=["POST"]),
             Route("/api/v1/runs/{run_id}", run_api),
             Route("/api/v1/runs/{run_id}/evidence", evidence_json),
             Route("/api/v1/runs/{run_id}/logs", execution_log_endpoint),

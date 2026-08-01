@@ -27,6 +27,7 @@ vision = [
 ]
 export = [
     "reportlab>=4.2",
+    "svglib>=1.5",  # SVG(candlestick_builder 產的圖) -> ReportLab drawing，PDF 才能內嵌圖表
 ]
 
 [project.scripts]

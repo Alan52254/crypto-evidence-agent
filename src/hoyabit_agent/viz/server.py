@@ -311,7 +311,11 @@ async def serve(host: str = "127.0.0.1", port: int = 8000) -> None:  # pragma: n
     ) -> AnalysisOutcome:
         import httpx
 
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        # 200s：留在 BedrockProvider 的 180s 內部 timeout 之上，
+        # 讓 bedrock.py 的 asyncio.wait_for(timeout=180) 才是實際生效的上限——
+        # 這裡若設得比它短，client 會在 180s 到之前就先炸掉 ReadTimeout，
+        # 180s 的設定形同虛設（曾在真實 synthesise() 呼叫上重現：90s 就被腰斬 3 次）。
+        async with httpx.AsyncClient(timeout=200.0) as client:
             model = await create_model_provider(client)
             if model is None:
                 raise RuntimeError(

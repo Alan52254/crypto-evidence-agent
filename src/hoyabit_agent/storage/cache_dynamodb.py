@@ -30,11 +30,11 @@ except ImportError:  # boto3 是 optional dependency —— 未安裝時整層�
 logger = logging.getLogger(__name__)
 
 # ─── 設定 ───
-AWS_REGION_ENV = "DYNAMODB_REGION"
-DEFAULT_REGION = "us-west-2"
+AWS_REGION_ENV = "AWS_REGION"
+DEFAULT_REGION = "us-east-1"
 
-SESSION_TABLE = "hoyabit_agent_sessions"
-CACHE_TABLE = "hoyabit_query_cache"
+SESSION_TABLE = os.environ.get("DYNAMODB_SESSION_TABLE", "hoyabit-cache")
+CACHE_TABLE = os.environ.get("DYNAMODB_CACHE_TABLE", "hoyabit-cache")
 
 DEFAULT_CACHE_TTL_SECONDS = 300  # 5 分鐘
 CONNECT_TIMEOUT = 3.0
@@ -196,7 +196,7 @@ class DynamoDBCache:
         try:
             resp = self._client.get_item(
                 TableName=SESSION_TABLE,
-                Key={"session_id": {"S": session_id}},
+                Key={"pk": {"S": f"session:{session_id}"}},
             )
             item = resp.get("Item")
             if item and "chat_history" in item:
@@ -223,7 +223,7 @@ class DynamoDBCache:
             self._client.put_item(
                 TableName=SESSION_TABLE,
                 Item={
-                    "session_id": {"S": session_id},
+                    "pk": {"S": f"session:{session_id}"},
                     "chat_history": {"S": json.dumps(history, ensure_ascii=False)},
                     "updated_at": {"N": str(int(time.time()))},
                 },
@@ -244,7 +244,7 @@ class DynamoDBCache:
         try:
             resp = self._client.get_item(
                 TableName=CACHE_TABLE,
-                Key={"cache_key": {"S": cache_key}},
+                Key={"pk": {"S": f"cache:{cache_key}"}},
             )
             item = resp.get("Item")
             if not item:
@@ -281,7 +281,7 @@ class DynamoDBCache:
             self._client.put_item(
                 TableName=CACHE_TABLE,
                 Item={
-                    "cache_key": {"S": cache_key},
+                    "pk": {"S": f"cache:{cache_key}"},
                     "response_data": {"S": json.dumps(data, ensure_ascii=False)},
                     "ttl": {"N": str(ttl_epoch)},
                     "created_at": {"N": str(now)},

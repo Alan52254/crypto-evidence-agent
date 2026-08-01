@@ -140,3 +140,91 @@ _Avoid_: 缺失資料、估算窗口
 **證據不足 (Insufficient Dataset Evidence)**：
 問題超出資料集日期或要求新聞、基本面、鏈上、籌碼或情緒資訊時的明確結果。
 _Avoid_: 猜測、外部常識補完
+
+## 已知架構風險（2026-08 Bedrock 遷移後）
+
+### 範圍偷換偵測 (Scope Swap Detection) — 無專屬結構性防線
+
+**現狀**：系統沒有 deterministic 的 scope swap detection 模組。
+當題目問「A 對 B 的影響」但蒐集到的證據只涵蓋 B 本身（而非 A→B 的因果鏈），
+目前完全依賴模型自身的判斷力來辨識並揭露此落差。
+
+**已驗證的情境**：
+- 完全不相關的極端案例（證據全是 BTC 技術面，題目問美股影響）→ Claude 正確拒絕編造，明確聲明缺乏宏觀資料。
+- 部分相關的美股範圍偷換（證據有 FEDFUNDS/M2/相關性數據但無美股本身指標）→ Claude 未偷換，但這是模型自己守住的，非系統強制。
+
+**未被覆蓋的風險**：
+- 漸進式範圍窄化（證據「部分相關但範圍被悄悄縮小」）— 比「完全不相關」難偵測得多。
+  模型在此情境下可能用「宏觀環境」代替「美股本身」來回答，從結果看起來合理但實質偏離了問題。
+- 目前無 deterministic 防線攔截此類偷換。gap_rules 和 confidence penalty 只懲罰「缺少面向」，
+  不檢查「蒐集到的證據主題是否真的對應問題主題」。
+
+**維護建議**：
+- 不要因為目前測試中 Claude 沒犯此錯就假設此風險不存在。
+- 若未來觀察到報告偷換範圍的案例，應優先建立 deterministic 的 scope relevance check
+  （可能作為 claim_ledger 的擴充：驗證 conclusion 引用的 evidence 是否涵蓋問題的核心概念）。
+- 這是「依賴模型能力、缺乏結構性保障」的已知妥協，不是遺漏。
+
+### Review 層在 Bedrock 架構下被跳過
+
+**現狀**：`BedrockProvider` 不支援 `_text_generation_channel()`（它是 Gemini 專屬的 `_post()` 方法），
+因此 Layer 3 review（語氣修飾、面向矛盾解釋）自動跳過。
+
+**影響**：
+- `review_applied: False` 會被記錄在報告 metadata 中（結構化揭露）。
+- 推論軌跡明確記錄「review layer skipped: provider does not support text generation channel」。
+- Phase 2 驗證結論：Claude Sonnet 4.6 在 synthesise 階段自然處理矛盾（5 次測試穩定），
+  review 層的核心功能已被模型底層能力覆蓋。
+- 但若未來切換到推理能力較弱的模型，review 層可能需要重新啟用。
+
+### enforce_paired_disclosure 在 Bedrock 上的狀態
+
+**現狀**：deterministic function，與模型無關。interface 是 `tuple[DraftClaim, ...]`。
+
+**已驗證**：函數邏輯本身以 unit test 確認正確 — 手動構造只引用 SMA60 的 DraftClaim
+（使用與 Bedrock 輸出相同的 evidence ID 命名格式 BNC-SPOT-XXX-SMA60），
+函數正確注入 SMA200 的 evidence_id 與摘要文字。這證明「如果 Claude 產出只引用
+單邊指標的 claim，此函數會接住」。
+
+**尚未驗證**：在真實 Bedrock 端到端 pipeline 中，此函數從未被實際觸發過。
+原因是 Claude Sonnet 4.6 的指令跟隨度較高，目前所有測試中它都自然引用了
+配對指標的雙方，導致函數的 `if cited_members and missing_members` 條件
+從未成立。因此「Claude 真實產出 → enforce_paired_disclosure 觸發 → 正確補上遺漏」
+這條端到端路徑是假設性的，不是觀察到的事實。
+
+**結論**：此函數是 model-agnostic 的最後一道 deterministic 保障。
+函數本身可靠（unit test），但「它在真實運行中有沒有機會被需要」仍是未知。
+不要因為「目前沒被觸發」就移除它 — 它的價值正是在模型偶爾失手時才顯現。
+
+### MACD DEA 量級「看似異常」的說明（2026-08-01 勘誤）
+
+**背景**：報告中 MACD 數值 `DIF=-38.98, DEA=182.80, Hist=-221.78` 曾被誤判為
+計算 bug 的症狀（fast_ema warm-up 問題）。經過用修復後的程式碼 + 即時 Binance
+200 根日線數據重新驗證，確認 **DEA=182 是正確值，不是 bug**。
+
+**根因**：DEA 是 DIF 序列的 EMA(9)。在 BTC 從 $28K 漲到 $67K 再回落到 $63K
+的 200 天內，早期的大幅正 DIF 值被 DEA 的 EMA 記憶效應保留，導致 DEA 仍為正值，
+而近期的 DIF（fast EMA - slow EMA 差距小）已回到 -38 附近。兩者量級不同是
+「市場經歷大波動 + 有限窗口」的正常結果。
+
+**兩個獨立結論不要混淆**：
+
+1. **warm-up bug（已修復，有效）**：`fast_ema` 在 index 12~25 未更新的問題確實存在，
+   在短窗口（36-60 根）會造成 $68-190 的計算偏差。修復後與標準 MACD 實作差異歸零。
+   這個修復在 200 根以上數據的影響 ≈ $0。
+
+2. **DEA 量級異常（非 bug，是正常行為）**：DEA=182 vs DIF=-38 的量級差不是 warm-up
+   bug 造成的，是 EMA 記憶效應在大幅趨勢變動後的正常表現。報告中的柱狀值 -221
+   （bearish 方向）是正確的。
+
+**對報告可比性的影響**：
+
+不同報告如果使用不同長度的 K 線窗口（60/100/200 根），DEA 的「記憶深度」會不同，
+導致跨報告的 MACD 柱狀值絕對量級不可直接比較。目前系統的 Binance source 預設
+limit=200，但 Claude 的 plan() 可能指定不同 limit。
+
+**建議**：
+- 報告中引用 MACD 時，應關注柱狀值的**方向（正/負）和趨勢（收斂/發散）**，
+  而非絕對數值的大小。
+- 如需跨報告比較 MACD 量級，需確認兩份報告使用相同的 K 線窗口長度。
+- 長期考慮固定 MACD 計算的最小窗口長度（如強制 200 根），避免短窗口造成不穩定。

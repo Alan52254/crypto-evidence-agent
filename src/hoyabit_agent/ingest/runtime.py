@@ -48,6 +48,7 @@ async def build_competition_sources(
         ExtendedNewsSource,
         OfficialAnnouncementSource,
     )
+    from hoyabit_agent.sources.blockchair import BlockchairOnChainSource
     from hoyabit_agent.sources.candlestick_builder import CandlestickBuilderSource
     from hoyabit_agent.sources.chart_ocr import ChartOCRSource
     from hoyabit_agent.sources.coingecko import CoinGeckoSource
@@ -67,6 +68,7 @@ async def build_competition_sources(
         FredMacroSource(client),
         ChartOCRSource(client, model_provider=model),
         CandlestickBuilderSource(client),
+        BlockchairOnChainSource(client),
     ]
     # 優先用 pgvector 版本（完整語意檢索）；連不上就用 CSV 直讀版
     historical = await build_market_evidence_source(client)

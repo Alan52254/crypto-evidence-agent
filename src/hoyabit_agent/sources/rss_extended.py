@@ -30,17 +30,30 @@ EXTENDED_FEEDS: tuple[tuple[str, str], ...] = (
     ("blockworks", "https://blockworks.co/feed/"),
 )
 
-# 官方公告 — 每個幣種的第一手來源
+# 官方公告 — 每個幣種的第一手來源。
+#
+# 五幣種原本嚴重失衡：只有 ETH 有真正的官方 feed，BTC 那條其實是
+# crypto_news 已經在用的 CoinDesk（媒體，不是官方），SOL/BNB/XRP 全空。
+# 逐一實測驗證後補上兩個真的存在的官方來源；XRP 找不到就是找不到，
+# 沒有為了湊數塞一個不存在的網址。
 OFFICIAL_FEEDS: dict[Asset, tuple[tuple[str, str], ...]] = {
     Asset.BTC: (
-        ("coindesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
+        # Bitcoin 沒有單一公司/基金會，沒有嚴格意義的「官方」。
+        # Bitcoin Optech 是最接近的等價物（協議層技術通訊，非媒體）；
+        # 原本這裡是跟 crypto_news 重複的 CoinDesk feed，掛「官方」
+        # 名義但實際只是媒體轉載，已換掉。
+        ("bitcoin-optech", "https://bitcoinops.org/feed.xml"),
     ),
     Asset.ETH: (
         ("ethereum-blog", "https://blog.ethereum.org/feed.xml"),
     ),
-    Asset.SOL: (),   # Solana 沒有公開 RSS feed，由 crypto_news 覆蓋
-    Asset.BNB: (),   # Binance 沒有公開 RSS feed，由 crypto_news 覆蓋
-    Asset.XRP: (),   # Ripple Insights 無 RSS feed，由 crypto_news 覆蓋
+    Asset.SOL: (
+        ("solana-foundation", "https://solana.com/news/rss.xml"),
+    ),
+    Asset.BNB: (
+        ("binance-medium", "https://medium.com/feed/binanceexchange"),
+    ),
+    Asset.XRP: (),   # 實測 20+ 個常見網址 + 兩次搜尋皆無效，Ripple 沒有公開 RSS feed
 }
 
 
@@ -197,9 +210,10 @@ class OfficialAnnouncementSource:
         return ToolSpec(
             name="official_announcements",
             description=(
-                "取得該幣種官方團隊的公告（Ethereum Blog、Solana News、"
-                "Ripple Insights、Binance Blog）。"
+                "取得該幣種官方團隊的公告（Bitcoin Optech、Ethereum Blog、"
+                "Solana News、Binance Exchange Medium）。"
                 "這是最高品質的基本面證據：第一手、無轉載、無第三方解讀。"
+                "XRP 目前沒有公開 RSS feed，此工具對 XRP 回傳空集合。"
             ),
             parameters={
                 "type": "object",

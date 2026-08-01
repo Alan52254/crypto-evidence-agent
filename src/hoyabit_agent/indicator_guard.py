@@ -138,10 +138,13 @@ def enforce_indicator_citations(
         # 移除包含幻覺數字的片段（指標名+數字的 match span）
         for orphan in claim_orphans:
             # 構建一個 pattern 來找到並移除包含此指標值的局部文字
-            # 匹配「指標名...數字」的最小包圍片段
+            # 匹配「指標名...分隔符...數字」的最小包圍片段
+            # 關鍵：value 前面必須有明確分隔符（=、:、空格），
+            # 避免把 "RSI14" 這種指標名稱裡的數字誤砍。
             removal_pattern = re.compile(
                 re.escape(orphan.indicator)
-                + r"[\s\(\)\d,]*[=:：\s]*"
+                + r"[\s\(\)]*"  # 不含 \d — 避免吃掉指標參數
+                + r"[=:：]\s*"  # 必須有分隔符
                 + re.escape(orphan.value)
                 + r"[%]?",
                 re.IGNORECASE,
@@ -155,15 +158,16 @@ def enforce_indicator_citations(
         indicators = ", ".join(
             f"{o.indicator}={o.value}" for o in claim_orphans
         )
-        warning = f"（⚠️ 已移除未在引用證據中找到對應的數值：{indicators}）"
 
         logger.warning(
             "[indicator_guard] claim #%d: removed orphan indicators: %s",
             idx, indicators,
         )
 
+        # 不把警告訊息寫進 claim text — 那是使用者看的報告，
+        # 不該出現系統除錯訊息。警告只留在 trace log。
         result[idx] = DraftClaim(
-            text=f"{cleaned_text} {warning}",
+            text=cleaned_text,
             evidence_ids=claim.evidence_ids,
             facet=claim.facet,
             role=claim.role,

@@ -164,6 +164,18 @@ def _describe(arguments: Arguments) -> str:
     return json.dumps(arguments, ensure_ascii=False, sort_keys=True)
 
 
+def _prefetch_args(tool_name: str, asset: Asset, as_of_date: date) -> Arguments:
+    """為預取工具組裝適當的參數。
+
+    Athena 歷史查詢需要 end_date 邊界以避免在 BACKTEST 模式下
+    返回超出截止日的資料。其他工具只需 asset。
+    """
+    base: dict[str, object] = {"asset": asset.value}
+    if tool_name == "athena_historical_query":
+        base["query_type"] = "ohlcv_summary"
+        base["end_date"] = as_of_date.isoformat()
+    return base
+
 async def analyse(
     request: AnalysisRequest,
     sources: Sources,
@@ -242,6 +254,22 @@ async def analyse(
     tools: tuple[ToolSpec, ...] = tuple(
         registry[name].spec for name in sorted(registry)
     )
+
+    # ─── 預取 Athena 歷史資料（確保技術面不遺漏）───
+    # Athena 是昂貴查詢但回傳的是結構化歷史統計，直接預取避免依賴模型決策。
+    if "athena_historical_query" in registry:
+        for _a in involved:
+            try:
+                athena_result = await asyncio.wait_for(
+                    registry["athena_historical_query"].fetch(
+                        _a, _prefetch_args("athena_historical_query", _a, request.as_of_date)
+                    ),
+                    timeout=io_timeout_seconds,
+                )
+                if athena_result:
+                    gathered = merge_independent_evidence((*gathered, *athena_result))
+            except Exception:
+                pass  # Athena 預取失敗不阻斷分析
 
     assessment = gap_rules.assess(gathered, requirement)
     used_fallback_plan = False

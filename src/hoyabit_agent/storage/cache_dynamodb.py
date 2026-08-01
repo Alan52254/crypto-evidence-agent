@@ -291,6 +291,29 @@ class DynamoDBCache:
         arg_str = json.dumps(arguments, sort_keys=True, ensure_ascii=False)
         return f"{tool_name}:{asset}:{arg_str}"
 
+    def invalidate_key(self, cache_key: str) -> None:
+        """主動刪除指定的快取條目。"""
+        self._mem_cache.pop(cache_key, None)
+        if self._degraded or self._client is None:
+            return
+        try:
+            self._client.delete_item(
+                TableName=CACHE_TABLE,
+                Key={"cache_key": {"S": cache_key}},
+            )
+        except Exception as exc:
+            logger.warning("[DynamoDBCache] invalidate_key failed: %s", exc)
+
+    def purge_expired(self) -> int:
+        """清除 in-memory 中所有已過期的條目。回傳清除數量。"""
+        now = int(time.time())
+        expired_keys = [
+            k for k, v in self._mem_cache.items() if v["ttl"] < now
+        ]
+        for k in expired_keys:
+            del self._mem_cache[k]
+        return len(expired_keys)
+
     # ─── Internal ───
 
     def _get_mem_cache(self, cache_key: str) -> dict[str, Any] | None:

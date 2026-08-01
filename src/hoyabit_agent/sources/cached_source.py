@@ -62,13 +62,22 @@ class CachedEvidenceSource:
         # ─── Cache Lookup ───
         cached = self._cache.get_cached_query(cache_key)
         if cached is not None:
-            logger.info(
-                "[CachedSource] Cache HIT: %s (tool=%s, asset=%s)",
-                cache_key[:60],
-                self._inner.spec.name,
-                asset.value,
-            )
-            return self._deserialize_evidence(cached, asset)
+            # 防禦：若快取內容為空（上次查詢失敗被誤存），視為 miss
+            evidence_items = cached.get("evidence", [])
+            if not evidence_items:
+                logger.info(
+                    "[CachedSource] Cache HIT but EMPTY content, treating as MISS: %s",
+                    cache_key[:60],
+                )
+                self._cache.invalidate_key(cache_key)
+            else:
+                logger.info(
+                    "[CachedSource] Cache HIT: %s (tool=%s, asset=%s)",
+                    cache_key[:60],
+                    self._inner.spec.name,
+                    asset.value,
+                )
+                return self._deserialize_evidence(cached, asset)
 
         # ─── Cache Miss → 呼叫底層 ───
         logger.info(
@@ -79,7 +88,7 @@ class CachedEvidenceSource:
         )
         results = await self._inner.fetch(asset, arguments)
 
-        # 有結果才寫入快取
+        # 只快取非空結果 — 空結果不寫入，避免暫時性失敗阻塞後續查詢
         if results:
             serialized = self._serialize_evidence(results)
             self._cache.set_cached_query(cache_key, serialized, self._ttl_seconds)

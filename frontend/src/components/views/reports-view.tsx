@@ -200,13 +200,12 @@ export function ReportsView() {
             })),
           }));
 
-        if (validReports.length > 0) {
-          setReports(validReports);
-          setBackendConnected(true);
-        } else {
-          setReports([DEMO_REPORT]);
-          setBackendConnected(false);
-        }
+        // 後端有回應就是「已連接」，跟「有沒有研報」是兩件事——
+        // 原本這兩種狀態被混在一起，後端明明連得上、只是還沒有任何
+        // 研報時，會被判定成「未連接」並且無聲換成寫死的 BTC demo
+        // report，畫面上看不出使用者剛剛分析的其實是別的幣種。
+        setBackendConnected(true);
+        setReports(validReports);
       } else {
         setReports([DEMO_REPORT]);
         setBackendConnected(false);
@@ -250,7 +249,9 @@ export function ReportsView() {
               <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
               <span>
                 {backendConnected
-                  ? `已連接後端 — ${reports.length} 份研報可供檢閱與下載`
+                  ? reports.length > 0
+                    ? `已連接後端 — ${reports.length} 份研報可供檢閱與下載`
+                    : "已連接後端 — 尚無已完成的研報記錄"
                   : "後端未連接，顯示示範報告 (Demo Mode)"}
               </span>
             </div>
@@ -270,6 +271,19 @@ export function ReportsView() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <span className="ml-3 text-body-md text-secondary">載入研報中...</span>
+          </div>
+        )}
+
+        {/* Empty state — connected but no reports yet. Never fall back to
+            DEMO_REPORT here: that would silently show a hardcoded BTC
+            report with no indication it isn't the user's actual analysis. */}
+        {!loading && backendConnected && reports.length === 0 && (
+          <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-outline-variant py-16 text-center">
+            <FileText className="h-8 w-8 text-secondary" />
+            <p className="text-body-md font-medium text-primary">尚無已完成的研報</p>
+            <p className="text-body-sm text-secondary">
+              回到 Workspace 執行一次分析，完成後這裡會顯示可下載的研報。
+            </p>
           </div>
         )}
 

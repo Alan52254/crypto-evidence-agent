@@ -37,6 +37,10 @@ _INDICATOR_NAMES = (
     r"BB",
     r"標準差",
     r"StdDev",
+    r"波動率?",  # 涵蓋「波動率」「年化波動率」「日均波動」—— 同樣是 prompts.py
+    # 禁止自行推算的統計量，只是敘述性寫法而非「名稱=數字」的緊密引用。
+    # 「率?」把結尾的「率」一併吃掉，否則「波動」單獨匹配後，middle
+    # 區段不含中文字元，後面的「率」會卡住比對。
 )
 
 _INDICATOR_PATTERN = re.compile(
@@ -44,6 +48,7 @@ _INDICATOR_PATTERN = re.compile(
     + "|".join(_INDICATOR_NAMES)
     + r")"
     r"[\s\(\)\d,]*"  # 可能跟括號或參數
+    r"(?:約|為|是|≈)?"  # 敘述性連接詞（如「波動率約 47%」），非緊密引用時常見
     r"[=:：\s]*"  # 分隔符
     r"(?P<value>[-+]?\d+[,.]?\d*)",
     re.IGNORECASE,
@@ -143,8 +148,12 @@ def enforce_indicator_citations(
             # 避免把 "RSI14" 這種指標名稱裡的數字誤砍。
             removal_pattern = re.compile(
                 re.escape(orphan.indicator)
-                + r"[\s\(\)]*"  # 不含 \d — 避免吃掉指標參數
-                + r"[=:：]\s*"  # 必須有分隔符
+                # 必須跟抽取階段的 _INDICATOR_PATTERN 一樣允許數字 ——
+                # 否則像 "RSI(14) = 99.9" 這種帶參數的寫法，"(14)" 裡的
+                # 數字會擋住比對，偵測到孤兒數字卻清不掉（只留下警告 log）。
+                + r"[\s\(\)\d,]*"
+                + r"(?:約|為|是|≈)?"  # 跟抽取階段對稱，否則「波動率約 47%」清不掉
+                + r"[=:：\s]*"  # 分隔符（含純空格，不強制要求 = 字元）
                 + re.escape(orphan.value)
                 + r"[%]?",
                 re.IGNORECASE,

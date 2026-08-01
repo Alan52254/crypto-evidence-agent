@@ -39,7 +39,7 @@ async def create_model_provider(client: httpx.AsyncClient) -> "ModelProvider | N
 
     if preferred == "bedrock":
         primary = bedrock_provider
-        secondary = gemini_provider or groq_provider
+        secondary = None  # Bedrock 單獨使用，不 fallback 到有 429 問題的 Gemini
     elif preferred == "groq":
         primary = groq_provider
         secondary = gemini_provider

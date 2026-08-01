@@ -61,7 +61,12 @@ class RuntimeEventBroker:
         channel.subscribers.add(queue)
         try:
             while True:
-                event, payload = await queue.get()
+                try:
+                    event, payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except TimeoutError:
+                    # 每 15 秒送心跳，防止 proxy/前端 body timeout
+                    yield ": heartbeat\n\n"
+                    continue
                 yield _sse(event, payload)
                 if event in {"complete", "error"}:
                     return

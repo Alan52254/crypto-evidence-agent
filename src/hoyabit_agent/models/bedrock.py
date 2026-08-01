@@ -41,7 +41,7 @@ BEDROCK_MODEL_ENV = "BEDROCK_MODEL"
 
 DEFAULT_REGION = "us-east-1"
 DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-6"
-DEFAULT_TIMEOUT_SECONDS = 90.0
+DEFAULT_TIMEOUT_SECONDS = 180.0
 MAX_RETRIES = 2
 
 
@@ -83,6 +83,11 @@ class BedrockProvider:
         region = os.environ.get(BEDROCK_REGION_ENV, DEFAULT_REGION).strip()
         model = os.environ.get(BEDROCK_MODEL_ENV, DEFAULT_MODEL).strip()
         return cls(client, api_key, region=region, model=model)
+
+    @property
+    def model_id(self) -> str:
+        """目前使用的模型 ID — 用於報告的 model_used 欄位。"""
+        return self._model
 
     # ─── plan ─── 決定呼叫哪些工具
 
@@ -155,21 +160,39 @@ class BedrockProvider:
         # 提取回應文字
         text = self._extract_text(body)
         if not text:
+            logger.warning("[Bedrock] synthesise 回應為空文字")
             return ()
+
+        # 檢查是否因 maxTokens 被截斷
+        stop_reason = body.get("stopReason", "")
+        if stop_reason == "max_tokens":
+            logger.warning("[Bedrock] synthesise 回應被 maxTokens 截斷（%d chars）", len(text))
 
         # 解析 JSON
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            # 嘗試從 markdown 包裝中提取
+            # 嘗試從 markdown 包裝中提取（Claude 常用 ```json ... ```）
             import re
+            # 先試 ```json ... ``` 格式
+            code_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
+            if code_match:
+                try:
+                    parsed = json.loads(code_match.group(1))
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    return parse_claims(parsed)
+            # 再試直接找最外層 { ... }
             match = re.search(r"\{[\s\S]*\}", text)
             if match:
                 try:
                     parsed = json.loads(match.group())
                 except json.JSONDecodeError:
+                    logger.warning("[Bedrock] synthesise JSON 解析失敗，前 200 字: %s", text[:200])
                     return ()
             else:
+                logger.warning("[Bedrock] synthesise 回應中找不到 JSON，前 200 字: %s", text[:200])
                 return ()
 
         return parse_claims(parsed)
@@ -235,7 +258,7 @@ class BedrockProvider:
             "system": [{"text": system}],
             "messages": messages,
             "inferenceConfig": {
-                "maxTokens": 4096,
+                "maxTokens": 8192,
                 "temperature": 0.1,
             },
         }

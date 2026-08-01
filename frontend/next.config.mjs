@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url";
 const nextConfig = {
   devIndicators: false,
   outputFileTracingRoot: fileURLToPath(new URL(".", import.meta.url)),
+  // 延長 serverless function timeout（分析回合最多 15 分鐘）
+  serverExternalPackages: [],
+  experimental: {
+    proxyTimeout: 900000, // 15 分鐘 SSE proxy timeout
+  },
 };
 
 export default nextConfig;

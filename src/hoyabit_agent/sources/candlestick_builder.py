@@ -93,7 +93,14 @@ class CandlestickBuilderSource:
                 return ()
             raw_klines = resp.json()
         except Exception as exc:
-            logger.warning("[CandlestickBuilder] 抓取 K線異常: %s", exc)
+            # httpx 的逾時/連線類例外（ReadTimeout、ConnectError）常常
+            # str() 出來是空字串——只印 %s 會讓 log 變成看不出原因的
+            # "抓取 K線異常: "，跟 bedrock.py 先前那個 90s/180s timeout
+            # 案例同一種坑。改印例外類別名稱，至少能分辨是逾時、連線被拒
+            # 還是別的問題。
+            logger.warning(
+                "[CandlestickBuilder] 抓取 K線異常: %s: %s", type(exc).__name__, exc
+            )
             return ()
 
         candles: list[OHLCV] = []

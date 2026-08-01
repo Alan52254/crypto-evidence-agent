@@ -49,10 +49,16 @@ const MARKDOWN_PROSE_CLASSES = `prose prose-sm max-w-none text-inherit leading-r
   [&_h1]:text-headline-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-6 [&_h1]:mb-3
   [&_h2]:text-headline-md [&_h2]:font-bold [&_h2]:text-primary [&_h2]:mt-5 [&_h2]:mb-2
   [&_h3]:text-body-lg [&_h3]:font-semibold [&_h3]:text-primary [&_h3]:mt-4 [&_h3]:mb-1
-  [&_.table-scroll]:overflow-x-auto [&_.table-scroll]:max-w-full [&_.table-scroll]:-mx-1 [&_.table-scroll]:px-1
+  [&_.table-scroll]:overflow-x-auto [&_.table-scroll]:max-w-full [&_.table-scroll]:-mx-1 [&_.table-scroll]:px-1 [&_.table-scroll]:my-2
+  [&_.table-scroll]:rounded-xl [&_.table-scroll]:border [&_.table-scroll]:border-outline-variant
   [&_table]:w-full [&_table]:min-w-[420px] [&_table]:text-[12px] [&_table]:border-collapse
-  [&_th]:border [&_th]:border-outline-variant [&_th]:bg-surface-container-low [&_th]:px-3 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold
-  [&_td]:border [&_td]:border-outline-variant [&_td]:px-3 [&_td]:py-1.5
+  [&_thead]:bg-primary/[0.06]
+  [&_th]:border-b [&_th]:border-outline-variant [&_th]:px-3 [&_th]:py-2 [&_th]:text-left
+  [&_th]:font-semibold [&_th]:text-[11px] [&_th]:uppercase [&_th]:tracking-wide [&_th]:text-primary
+  [&_td]:border-t [&_td]:border-outline-variant/60 [&_td]:px-3 [&_td]:py-1.5 [&_td]:font-mono [&_td]:text-[11.5px] [&_td]:text-on-surface-variant
+  [&_tbody_tr:first-child_td]:border-t-0
+  [&_tbody_tr:nth-child(even)]:bg-surface-container-lowest
+  [&_tbody_tr:hover]:bg-surface-container-low [&_tbody_tr]:transition-colors
   [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1
   [&_li]:text-body-md
   [&_strong]:text-primary [&_strong]:font-semibold
@@ -85,13 +91,37 @@ function markdownToHtml(md: string): string {
     .replace(/^> (.+)$/gm, "<blockquote>$1</blockquote>")
     // Unordered list items
     .replace(/^- (.+)$/gm, "<li>$1</li>")
-    // Table rows
-    .replace(/^\|(.+)\|$/gm, (match) => {
-      const cells = match.split("|").filter(Boolean).map((c) => c.trim());
-      if (cells.every((c) => /^[-:]+$/.test(c))) return ""; // separator row
-      const tag = cells.length > 0 ? "td" : "td";
+    // Table rows — needs the *next* line to tell a header row from a body
+    // row (a header is whatever sits directly above the |---|---| divider),
+    // which a single-line regex replace can't see. A row is only ever
+    // "header" by position, never by content, so this has to walk lines
+    // instead of pattern-matching each one in isolation. (Previously this
+    // built every row — including the header — as <td>, via a ternary that
+    // returned "td" on both branches; headers never got bold/shaded styling
+    // because no <th> was ever emitted.)
+    .split("\n")
+    .map((line, i, lines) => {
+      if (!/^\|(.+)\|$/.test(line)) return line;
+      const cells = line
+        .slice(1, -1)
+        .split("|")
+        .map((c) => c.trim());
+      if (cells.every((c) => /^[-:]+$/.test(c))) return ""; // separator row itself
+      const nextLine = lines[i + 1] ?? "";
+      const nextIsSeparator =
+        /^\|(.+)\|$/.test(nextLine) &&
+        nextLine
+          .slice(1, -1)
+          .split("|")
+          .every((c) => /^[-:]+$/.test(c.trim()));
+      const tag = nextIsSeparator ? "th" : "td";
       return `<tr>${cells.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
-    });
+    })
+    .join("\n")
+    // The separator row (|---|---|) became a blank line above — left alone,
+    // that gap breaks the "consecutive <tr>" grouping below into a
+    // header-only table and a body-only table instead of one table.
+    .replace(/(<tr>.*<\/tr>)\n+(?=<tr>)/g, "$1\n");
 
   // Wrap consecutive <li> in <ul>
   html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul>${match}</ul>`);
@@ -100,7 +130,14 @@ function markdownToHtml(md: string): string {
   // itself out of shape.
   html = html.replace(
     /(<tr>.*<\/tr>\n?)+/g,
-    (match) => `<div class="table-scroll"><table>${match}</table></div>`,
+    (match) => {
+      const rows = match.trim().split("\n");
+      const headRows = rows.filter((r) => r.includes("<th>"));
+      const bodyRows = rows.filter((r) => !r.includes("<th>"));
+      const thead = headRows.length ? `<thead>${headRows.join("")}</thead>` : "";
+      const tbody = bodyRows.length ? `<tbody>${bodyRows.join("")}</tbody>` : "";
+      return `<div class="table-scroll"><table>${thead}${tbody}</table></div>`;
+    },
   );
   // Paragraphs: wrap remaining lines
   html = html

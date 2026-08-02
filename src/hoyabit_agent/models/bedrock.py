@@ -328,7 +328,7 @@ class BedrockProvider:
             "system": [{"text": system}],
             "messages": messages,
             "inferenceConfig": {
-                "maxTokens": 8192,
+                "maxTokens": 16384,
                 "temperature": 0.1,
             },
         }

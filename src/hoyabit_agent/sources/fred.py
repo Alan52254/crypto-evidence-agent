@@ -71,20 +71,29 @@ class FredMacroSource:
         )
 
     async def fetch(self, asset: Asset, arguments: Arguments) -> tuple[Evidence, ...]:
-        """取得宏觀經濟指標。asset 參數被忽略（宏觀指標不分幣種）。"""
+        """取得宏觀經濟指標。asset 參數被忽略（宏觀指標不分幣種）。
+
+        所有指標平行取得 —— FRED API 不計 per-IP weight，每個指標是獨立端點，
+        排隊只會把 5 × ~2 秒的延遲疊上去，白白吃掉 10 秒壁鐘預算。
+        """
         if not self._api_key:
             return ()
 
         months = min(max(int(arguments.get("months", 14)), 1), 24)
         start_date = (datetime.now(UTC) - timedelta(days=months * 30)).strftime("%Y-%m-%d")
 
-        results: list[Evidence] = []
-        for series_id, description in _MACRO_SERIES.items():
-            evidence = await self._fetch_series(series_id, description, start_date)
-            if evidence is not None:
-                results.append(evidence)
+        import asyncio
 
-        return tuple(results)
+        tasks = [
+            self._fetch_series(series_id, description, start_date)
+            for series_id, description in _MACRO_SERIES.items()
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        return tuple(
+            item for item in results
+            if isinstance(item, Evidence)
+        )
 
     async def _fetch_series(
         self, series_id: str, description: str, start_date: str

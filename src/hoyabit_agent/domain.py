@@ -440,7 +440,20 @@ def _detect_primary_asset_from_question(question: str) -> str | None:
     比較題（同時出現兩個幣種）回傳第一個出現的作為 primary。
     """
     import re
-    # 用 word boundary 匹配，避免 "SOLANA" 裡的 SOL 被誤抓
+    # 中文別名 → 英文代號映射
+    _ALIASES: dict[str, str] = {
+        "比特幣": "BTC", "bitcoin": "BTC",
+        "以太幣": "ETH", "以太坊": "ETH", "ethereum": "ETH",
+        "索拉納": "SOL", "solana": "SOL",
+        "幣安幣": "BNB", "binance": "BNB",
+        "瑞波幣": "XRP", "ripple": "XRP",
+    }
+    lowered = question.lower()
+    # 先檢查中文/英文別名
+    for alias, symbol in _ALIASES.items():
+        if alias in lowered:
+            return symbol
+    # 再用 word boundary 匹配英文代號
     for symbol in ("BTC", "ETH", "SOL", "BNB", "XRP"):
         if re.search(rf"\b{symbol}\b", question, re.IGNORECASE):
             return symbol
